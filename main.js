@@ -82,12 +82,20 @@ function installRobloxHook() {
   }, null, 2);
 
   // 3a. Inside Roblox.app bundle
-  const robloxAppClientSettings = '/Applications/Roblox.app/Contents/MacOS/ClientSettings';
-  if (fs.existsSync('/Applications/Roblox.app')) {
+  let robloxAppPath = '/Applications/Roblox.app';
+  if (!fs.existsSync(robloxAppPath)) {
+    const userRoblox = path.join(homeDir, 'Applications', 'Roblox.app');
+    if (fs.existsSync(userRoblox)) {
+      robloxAppPath = userRoblox;
+    }
+  }
+
+  if (fs.existsSync(robloxAppPath)) {
+    const robloxAppClientSettings = path.join(robloxAppPath, 'Contents', 'MacOS', 'ClientSettings');
     safeWrite(
       path.join(robloxAppClientSettings, 'ClientAppSettings.json'),
       clientSettingsJson,
-      'Created ClientAppSettings.json in Roblox.app'
+      `Created ClientAppSettings.json in Roblox.app (${robloxAppPath})`
     );
   }
 
@@ -124,7 +132,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:3000');
     // mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, 'out', 'index.html'));
+    mainWindow.loadURL('http://localhost:8392');
   }
 
   mainWindow.on('closed', () => {
@@ -667,16 +675,35 @@ ipcMain.handle('db-status', () => {
   return db.isDbConnected();
 });
 
-// Local scripts directory path: Documents/ElectronExecutor/scripts
+// Local scripts directory path: Electron Executor/scripts
 function getLocalScriptsDir() {
-  const documentsDir = app.getPath('documents');
-  const baseDir = path.join(documentsDir, 'ElectronExecutor');
+  const baseDir = path.join(os.homedir(), 'Electron Executor');
   const scriptsDir = path.join(baseDir, 'scripts');
   if (!fs.existsSync(scriptsDir)) {
     fs.mkdirSync(scriptsDir, { recursive: true });
   }
+  
+  // Make sure other directories exist
+  const workspaceDir = path.join(baseDir, 'workspace');
+  if (!fs.existsSync(workspaceDir)) {
+    fs.mkdirSync(workspaceDir, { recursive: true });
+  }
+  const autoexecDir = path.join(baseDir, 'autoexec');
+  if (!fs.existsSync(autoexecDir)) {
+    fs.mkdirSync(autoexecDir, { recursive: true });
+  }
+  const modulesDir = path.join(baseDir, 'modules');
+  if (!fs.existsSync(modulesDir)) {
+    fs.mkdirSync(modulesDir, { recursive: true });
+  }
+  const themesDir = path.join(baseDir, 'themes');
+  if (!fs.existsSync(themesDir)) {
+    fs.mkdirSync(themesDir, { recursive: true });
+  }
+  
   return scriptsDir;
 }
+
 
 function getLocalScripts() {
   const dir = getLocalScriptsDir();

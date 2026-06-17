@@ -66,6 +66,25 @@ RESULTS=()
 add_result() { RESULTS+=("$1"); }
 
 # ═════════════════════════════════════════════════════════════════════
+# PRE-STEP: Create Electron Executor User Workspace
+# ═════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "  ${BLUE}${BOLD}[0/4]${NC} ${BOLD}Electron Executor Workspace Directory${NC}"
+
+ELECTRON_DIR="$HOME/Electron Executor"
+mkdir -p "$ELECTRON_DIR"
+mkdir -p "$ELECTRON_DIR/autoexec"
+mkdir -p "$ELECTRON_DIR/workspace"
+mkdir -p "$ELECTRON_DIR/scripts"
+mkdir -p "$ELECTRON_DIR/modules"
+mkdir -p "$ELECTRON_DIR/themes"
+
+success "Created workspace directory structure under $ELECTRON_DIR"
+
+add_result "${GREEN}✓${NC} Workspace: Initialized at ~/Electron Executor"
+
+
+# ═════════════════════════════════════════════════════════════════════
 # STEP 1: Copy loader.lua to Roblox Studio Plugins
 # ═════════════════════════════════════════════════════════════════════
 echo ""
@@ -88,7 +107,7 @@ fi
 echo ""
 echo -e "  ${BLUE}${BOLD}[2/4]${NC} ${BOLD}Exploit Autoexec Folders${NC}"
 
-EXPLOIT_NAMES=("MacSploit" "Hydrogen" "Wave" "Xeno" "Arceus-X")
+EXPLOIT_NAMES=("MacSploit" "Hydrogen" "Wave" "Xeno" "Arceus-X" "Opiumware" "opiumware-executor" "com.norbyv1.opiumware")
 EXPLOIT_FOUND=0
 
 for EXPLOIT_NAME in "${EXPLOIT_NAMES[@]}"; do
@@ -121,9 +140,16 @@ fi
 echo ""
 echo -e "  ${BLUE}${BOLD}[3/4]${NC} ${BOLD}Roblox Player HTTP Settings${NC}"
 
-# Path 1: Roblox Player ClientSettings (in /Applications)
-ROBLOX_APP_CONTENTS="/Applications/Roblox.app/Contents/MacOS"
-ROBLOX_CLIENT_SETTINGS_DIR="$ROBLOX_APP_CONTENTS/ClientSettings"
+# Detect Roblox path dynamically on this device
+ROBLOX_PATH=""
+if [ -d "/Applications/Roblox.app" ]; then
+  ROBLOX_PATH="/Applications/Roblox.app"
+elif [ -d "$HOME/Applications/Roblox.app" ]; then
+  ROBLOX_PATH="$HOME/Applications/Roblox.app"
+else
+  # Spotlight lookup fallback
+  ROBLOX_PATH=$(mdfind "kMDItemCFBundleIdentifier == 'com.roblox.RobloxPlayer'" 2>/dev/null | head -n 1)
+fi
 
 CLIENT_SETTINGS_JSON='{
   "FFlagDebugLocalRccServerConnection": "true",
@@ -132,18 +158,26 @@ CLIENT_SETTINGS_JSON='{
   "FFlagEnableHttpServiceAutoRetry": "true"
 }'
 
-if [ -d "$ROBLOX_APP_CONTENTS" ]; then
+if [ -n "$ROBLOX_PATH" ] && [ -d "$ROBLOX_PATH" ]; then
+  ROBLOX_APP_CONTENTS="$ROBLOX_PATH/Contents/MacOS"
+  ROBLOX_CLIENT_SETTINGS_DIR="$ROBLOX_APP_CONTENTS/ClientSettings"
+  
   mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" 2>/dev/null
   if echo "$CLIENT_SETTINGS_JSON" > "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" 2>/dev/null; then
-    success "Created ClientAppSettings.json in Roblox Player"
+    success "Created ClientAppSettings.json in Roblox Player ($ROBLOX_PATH)"
     add_result "${GREEN}✓${NC} Roblox Player: ClientAppSettings.json created"
   else
-    fail_soft "Failed to write ClientAppSettings.json (may need sudo)"
-    warn "Try: sudo mkdir -p '$ROBLOX_CLIENT_SETTINGS_DIR' && sudo chmod 777 '$ROBLOX_CLIENT_SETTINGS_DIR'"
-    add_result "${YELLOW}⚠${NC} Roblox Player: ClientAppSettings needs manual setup"
+    # Try with sudo if write failed
+    if sudo mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" && echo "$CLIENT_SETTINGS_JSON" | sudo tee "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" >/dev/null; then
+      success "Created ClientAppSettings.json in Roblox Player with sudo ($ROBLOX_PATH)"
+      add_result "${GREEN}✓${NC} Roblox Player: ClientAppSettings.json created (sudo)"
+    else
+      fail_soft "Failed to write ClientAppSettings.json"
+      add_result "${YELLOW}⚠${NC} Roblox Player: ClientAppSettings needs manual setup"
+    fi
   fi
 else
-  info "Roblox Player not found at /Applications/Roblox.app"
+  info "Roblox Player not found on this device (skipping Roblox Player patch)"
   add_result "${DIM}→${NC} Roblox Player: Not found"
 fi
 

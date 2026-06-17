@@ -2,10 +2,66 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
+const path = require('path');
+const fs = require('fs');
 const db = require('./db');
 
-let nextScript = null; // Queue for HTTP polling
+let scriptQueue = []; // Queue for HTTP polling (multiple scripts support)
 let wsClients = new Set();
+
+function runAutoexecScripts(wsClient = null) {
+  try {
+    const os = require('os');
+    const autoexecDir = path.join(os.homedir(), 'Electron Executor', 'autoexec');
+    if (!fs.existsSync(autoexecDir)) {
+      fs.mkdirSync(autoexecDir, { recursive: true });
+      return;
+    }
+
+    const files = fs.readdirSync(autoexecDir).filter(f => f.endsWith('.lua') || f.endsWith('.txt')).sort();
+    if (files.length === 0) {
+      console.log('[Autoexec] No autoexec scripts to execute.');
+      return;
+    }
+
+    console.log(`[Autoexec] Found ${files.length} script(s) in autoexec. Executing...`);
+    files.forEach(file => {
+      const filePath = path.join(autoexecDir, file);
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        if (content.trim().length > 0) {
+          console.log(`[Autoexec] Executing: ${file}`);
+          if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+            wsClient.send(JSON.stringify({
+              action: 'execute',
+              source: content,
+              name: file
+            }));
+          } else {
+            let sent = false;
+            wsClients.forEach(ws => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                  action: 'execute',
+                  source: content,
+                  name: file
+                }));
+                sent = true;
+              }
+            });
+            if (!sent) {
+              scriptQueue.push(content);
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[Autoexec] Failed to execute ${file}:`, err.message);
+      }
+    });
+  } catch (err) {
+    console.error('[Autoexec] Error scanning autoexec folder:', err.message);
+  }
+}
 let mainProcessSendCallback = null;
 
 // Track current active game metadata
@@ -21,6 +77,12 @@ function startServer(port = 8392, onLogCallback = null) {
   app.use(cors());
   app.use(express.json());
 
+  // Serve Next.js static build files if the 'out' directory exists
+  const outPath = path.join(__dirname, 'out');
+  if (fs.existsSync(outPath)) {
+    app.use(express.static(outPath));
+  }
+
   // Set callback to send logs to electron main process
   mainProcessSendCallback = onLogCallback;
 
@@ -35,7 +97,7 @@ function startServer(port = 8392, onLogCallback = null) {
     console.log(`[Server] Queueing script: ${name}`);
     
     // 1. Save for HTTP polling
-    nextScript = scriptContent;
+    scriptQueue.push(scriptContent);
 
     // 2. Send to WebSocket clients
     let wsSent = false;
@@ -76,14 +138,16 @@ function startServer(port = 8392, onLogCallback = null) {
       mainProcessSendCallback('roblox-handshake', activeGameInfo);
     }
     
+    // Execute autoexec scripts
+    runAutoexecScripts();
+
     return res.status(200).send('Handshake Successful');
   });
 
   // Endpoint for Roblox HTTP polling loader
   app.get('/poll', (req, res) => {
-    if (nextScript) {
-      const script = nextScript;
-      nextScript = null; // Consume script
+    if (scriptQueue.length > 0) {
+      const script = scriptQueue.shift();
       console.log('[Server] Script polled and delivered to Roblox');
       return res.send(script);
     }
@@ -118,7 +182,7 @@ function startServer(port = 8392, onLogCallback = null) {
   app.get('/status', (req, res) => {
     return res.json({
       connectedClients: wsClients.size,
-      hasPendingScript: nextScript !== null,
+      hasPendingScript: scriptQueue.length > 0,
       activeGame: activeGameInfo
     });
   });
@@ -151,6 +215,9 @@ function startServer(port = 8392, onLogCallback = null) {
           if (mainProcessSendCallback) {
             mainProcessSendCallback('roblox-handshake', activeGameInfo);
           }
+
+          // Execute autoexec scripts
+          runAutoexecScripts(ws);
         } else if (data.action === 'log') {
           console.log(`[Roblox WS Log] [${data.type || 'info'}] ${data.message}`);
           
