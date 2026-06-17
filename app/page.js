@@ -408,11 +408,11 @@ export default function MainPage() {
 
     // Verify connection hook status if Roblox is active
     if (robloxProcess.running && !connectionStatus.connected) {
-      appendLog("Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.", 'roblox-error', 'console');
+      appendLog("Roblox belum di-patch! Klik tombol ⚡ Attach untuk memasang injeksi Electron Executor.", 'roblox-warn', 'console');
       setToast({
         show: true,
-        message: "Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.",
-        type: 'error'
+        message: "Roblox belum di-patch! Klik ⚡ Attach untuk injeksi.",
+        type: 'warning'
       });
       return;
     }
@@ -504,11 +504,11 @@ export default function MainPage() {
 
     // Verify connection hook status if Roblox is active
     if (robloxProcess.running && !connectionStatus.connected) {
-      appendLog("Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.", 'roblox-error', 'console');
+      appendLog("Roblox belum di-patch! Klik tombol ⚡ Attach untuk memasang injeksi Electron Executor.", 'roblox-warn', 'console');
       setToast({
         show: true,
-        message: "Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.",
-        type: 'error'
+        message: "Roblox belum di-patch! Klik ⚡ Attach untuk injeksi.",
+        type: 'warning'
       });
       return;
     }
@@ -832,10 +832,19 @@ export default function MainPage() {
                 className={`fixed top-16 right-4 z-[9999] flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-lg ${
                   toast.type === 'success' 
                     ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200 shadow-emerald-950/20' 
+                    : toast.type === 'warning'
+                    ? 'bg-amber-500/20 border-amber-500/30 text-amber-200 shadow-amber-950/20'
+                    : toast.type === 'info'
+                    ? 'bg-blue-500/20 border-blue-500/30 text-blue-200 shadow-blue-950/20'
                     : 'bg-rose-500/20 border-rose-500/30 text-rose-200 shadow-rose-950/20'
                 }`}
               >
-                <div className={`w-2 h-2 rounded-full ${toast.type === 'success' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                <div className={`w-2 h-2 rounded-full ${
+                  toast.type === 'success' ? 'bg-emerald-400 animate-pulse' 
+                  : toast.type === 'warning' ? 'bg-amber-400 animate-pulse'
+                  : toast.type === 'info' ? 'bg-blue-400 animate-pulse'
+                  : 'bg-rose-400'
+                }`} />
                 <span className="text-sm font-medium">{toast.message}</span>
               </motion.div>
             )}

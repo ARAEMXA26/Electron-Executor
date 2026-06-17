@@ -90,11 +90,11 @@ else
   success "Intel Mac detected"
 fi
 
-# Check if Roblox is installed
+# Check if Roblox is installed (will be reinstalled with injection patches in Step 6)
 if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
-  success "Roblox Player found"
+  info "Existing Roblox Player found — will be replaced with patched version"
 else
-  warn "Roblox Player not found — you can install it later from roblox.com"
+  info "Roblox Player not found — will be downloaded and injected automatically"
 fi
 
 # ── Step 2: Install prerequisites ───────────────────────────────────
@@ -233,14 +233,17 @@ echo -e "${GREEN}${BOLD}  ╚═════════════════
 echo ""
 echo -e "  ${BOLD}App Location:${NC}  /Applications/Electron Executor.app"
 echo -e "  ${BOLD}Dev Folder:${NC}    $INSTALL_DIR"
-echo -e "  ${BOLD}Roblox fix:${NC}    ${CYAN}cd $INSTALL_DIR && ./setup-roblox.sh${NC}"
+echo -e "  ${BOLD}Re-inject:${NC}     ${CYAN}cd $INSTALL_DIR && ./setup-roblox.sh${NC}"
 echo ""
 echo -e "  ${DIM}────────────────────────────────────────────${NC}"
 echo -e "  ${YELLOW}How to use:${NC}"
 echo -e "  1. Wait for the app to fully load (5 sec splash screen)"
-echo -e "  2. Open Roblox and join a game"
-echo -e "  3. The app will auto-detect Roblox running"
-echo -e "  4. Write/load Lua scripts and press ${GREEN}Execute ▶${NC}"
+echo -e "  2. Open Roblox and join any game"
+echo -e "  3. Injeksi otomatis — Electron Executor akan terhubung langsung"
+echo -e "  4. Write Lua scripts and press ${GREEN}Execute ▶${NC}"
+echo ""
+echo -e "  ${DIM}Tidak perlu software pihak ketiga.${NC}"
+echo -e "  ${DIM}Injeksi dilakukan langsung oleh Electron Executor.${NC}"
 echo -e "  ${DIM}────────────────────────────────────────────${NC}"
 echo ""
 

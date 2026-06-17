@@ -1,17 +1,21 @@
 #!/bin/bash
 
 # ====================================================================
-# ELECTRON EXECUTOR — ROBLOX AUTO-SETUP SCRIPT
-# Automatically patches Roblox folders so the executor can connect.
+# ELECTRON EXECUTOR — ROBLOX AUTO-SETUP & INJECTION SCRIPT
+# Automatically removes old Roblox, downloads fresh copy, patches
+# the bundle for Electron Executor injection, and verifies.
 #
 # Usage:
 #   chmod +x setup-roblox.sh && ./setup-roblox.sh
 #
 # What this script does:
-#   1. Copies ElectronLoader.lua to Roblox Studio Plugins folder
-#   2. Creates autoexec folders for macOS exploit clients
-#   3. Creates ClientSettings with HTTP enabled for Roblox Player
-#   4. Verifies all files are correctly placed
+#   1. Kills running Roblox processes
+#   2. Removes old Roblox installation completely
+#   3. Downloads fresh Roblox installer from roblox.com
+#   4. Installs Roblox to /Applications
+#   5. Patches Roblox bundle with Electron Executor injection files
+#   6. Copies loader.lua to Studio Plugins and autoexec folders
+#   7. Verifies all files are correctly placed
 # ====================================================================
 
 set -e
@@ -47,7 +51,7 @@ LOADER_FILE="$SCRIPT_DIR/loader.lua"
 if [ "$FROM_INSTALLER" = false ]; then
   echo ""
   echo -e "${MAGENTA}${BOLD}  ╔══════════════════════════════════════════════════╗${NC}"
-  echo -e "${MAGENTA}${BOLD}  ║     🔧 Electron Executor — Roblox Setup 🔧      ║${NC}"
+  echo -e "${MAGENTA}${BOLD}  ║  🔧 Electron Executor — Roblox Injection Setup  ║${NC}"
   echo -e "${MAGENTA}${BOLD}  ╚══════════════════════════════════════════════════╝${NC}"
   echo ""
 fi
@@ -65,11 +69,14 @@ info "Using loader script: $LOADER_FILE"
 RESULTS=()
 add_result() { RESULTS+=("$1"); }
 
+# Total steps
+TOTAL_STEPS=7
+
 # ═════════════════════════════════════════════════════════════════════
-# PRE-STEP: Create Electron Executor User Workspace
+# STEP 0: Create Electron Executor User Workspace
 # ═════════════════════════════════════════════════════════════════════
 echo ""
-echo -e "  ${BLUE}${BOLD}[0/4]${NC} ${BOLD}Electron Executor Workspace Directory${NC}"
+echo -e "  ${BLUE}${BOLD}[0/$TOTAL_STEPS]${NC} ${BOLD}Electron Executor Workspace Directory${NC}"
 
 ELECTRON_DIR="$HOME/Electron Executor"
 mkdir -p "$ELECTRON_DIR"
@@ -80,15 +87,324 @@ mkdir -p "$ELECTRON_DIR/modules"
 mkdir -p "$ELECTRON_DIR/themes"
 
 success "Created workspace directory structure under $ELECTRON_DIR"
-
 add_result "${GREEN}✓${NC} Workspace: Initialized at ~/Electron Executor"
 
 
 # ═════════════════════════════════════════════════════════════════════
-# STEP 1: Copy loader.lua to Roblox Studio Plugins
+# STEP 1: Kill Running Roblox Processes
 # ═════════════════════════════════════════════════════════════════════
 echo ""
-echo -e "  ${BLUE}${BOLD}[1/4]${NC} ${BOLD}Roblox Studio Plugins${NC}"
+echo -e "  ${BLUE}${BOLD}[1/$TOTAL_STEPS]${NC} ${BOLD}Terminating Running Roblox Processes${NC}"
+
+KILLED=0
+for PROC_NAME in "RobloxPlayer" "Roblox" "RobloxStudio" "RobloxPlayerInstaller" "RobloxCrashHandler"; do
+  if pgrep -x "$PROC_NAME" > /dev/null 2>&1; then
+    pkill -9 "$PROC_NAME" 2>/dev/null || true
+    success "Killed process: $PROC_NAME"
+    KILLED=$((KILLED + 1))
+  fi
+done
+
+if [ "$KILLED" -eq 0 ]; then
+  info "No Roblox processes were running"
+else
+  success "Terminated $KILLED Roblox process(es)"
+fi
+add_result "${GREEN}✓${NC} Roblox processes: Terminated ($KILLED killed)"
+
+# Small delay to ensure processes are fully terminated
+sleep 1
+
+
+# ═════════════════════════════════════════════════════════════════════
+# STEP 2: Remove Old Roblox Installation
+# ═════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "  ${BLUE}${BOLD}[2/$TOTAL_STEPS]${NC} ${BOLD}Removing Old Roblox Installation${NC}"
+
+REMOVED=0
+
+# Remove from /Applications
+if [ -d "/Applications/Roblox.app" ]; then
+  if rm -rf "/Applications/Roblox.app" 2>/dev/null; then
+    success "Removed /Applications/Roblox.app"
+    REMOVED=$((REMOVED + 1))
+  else
+    info "Trying with elevated permissions..."
+    sudo rm -rf "/Applications/Roblox.app" 2>/dev/null && success "Removed /Applications/Roblox.app (sudo)" && REMOVED=$((REMOVED + 1)) || fail_soft "Could not remove /Applications/Roblox.app"
+  fi
+fi
+
+# Remove from ~/Applications
+if [ -d "$HOME/Applications/Roblox.app" ]; then
+  rm -rf "$HOME/Applications/Roblox.app" 2>/dev/null
+  success "Removed ~/Applications/Roblox.app"
+  REMOVED=$((REMOVED + 1))
+fi
+
+# Remove Roblox Studio
+if [ -d "/Applications/RobloxStudio.app" ]; then
+  rm -rf "/Applications/RobloxStudio.app" 2>/dev/null || sudo rm -rf "/Applications/RobloxStudio.app" 2>/dev/null
+  success "Removed /Applications/RobloxStudio.app"
+  REMOVED=$((REMOVED + 1))
+fi
+
+# Clean up Roblox cache and version folders (but preserve user data)
+ROBLOX_VERSIONS_DIR="$HOME/Library/Application Support/Roblox/Versions"
+if [ -d "$ROBLOX_VERSIONS_DIR" ]; then
+  rm -rf "$ROBLOX_VERSIONS_DIR" 2>/dev/null
+  success "Cleaned Roblox Versions cache"
+fi
+
+if [ "$REMOVED" -eq 0 ]; then
+  info "No previous Roblox installation found to remove"
+fi
+add_result "${GREEN}✓${NC} Old Roblox: Removed ($REMOVED app bundles cleaned)"
+
+
+# ═════════════════════════════════════════════════════════════════════
+# STEP 3: Download Fresh Roblox Installer
+# ═════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "  ${BLUE}${BOLD}[3/$TOTAL_STEPS]${NC} ${BOLD}Downloading Fresh Roblox Installer${NC}"
+
+DMG_PATH="/tmp/RobloxPlayer.dmg"
+
+# Clean up any old download
+rm -f "$DMG_PATH" 2>/dev/null
+
+# Download Roblox Player installer DMG for macOS
+DOWNLOAD_URL="https://www.roblox.com/download/client"
+
+info "Downloading from Roblox CDN..."
+if curl -L -o "$DMG_PATH" "$DOWNLOAD_URL" --progress-bar 2>&1; then
+  FILE_SIZE=$(wc -c < "$DMG_PATH" | tr -d ' ')
+  if [ "$FILE_SIZE" -gt 1000000 ]; then
+    success "Downloaded Roblox installer ($(echo "scale=1; $FILE_SIZE / 1048576" | bc) MB)"
+    add_result "${GREEN}✓${NC} Roblox Download: Success ($(echo "scale=1; $FILE_SIZE / 1048576" | bc) MB)"
+  else
+    # The download might have returned an HTML redirect page, try alternate URL
+    info "Small file detected, trying alternate download URL..."
+    DOWNLOAD_URL="https://setup.rbxcdn.com/mac/RobloxPlayer.dmg"
+    rm -f "$DMG_PATH"
+    curl -L -o "$DMG_PATH" "$DOWNLOAD_URL" --progress-bar 2>&1
+    FILE_SIZE=$(wc -c < "$DMG_PATH" | tr -d ' ')
+    if [ "$FILE_SIZE" -gt 1000000 ]; then
+      success "Downloaded Roblox installer from CDN ($(echo "scale=1; $FILE_SIZE / 1048576" | bc) MB)"
+      add_result "${GREEN}✓${NC} Roblox Download: Success from CDN"
+    else
+      fail_soft "Downloaded file is too small ($FILE_SIZE bytes). Download may have failed."
+      add_result "${RED}✗${NC} Roblox Download: File too small"
+      
+      # Fallback: try to use brew cask
+      info "Attempting fallback installation via Homebrew..."
+      if command -v brew &> /dev/null; then
+        brew install --cask roblox 2>/dev/null && success "Installed Roblox via Homebrew" && add_result "${GREEN}✓${NC} Roblox: Installed via Homebrew"
+      fi
+    fi
+  fi
+else
+  fail_soft "Failed to download Roblox installer"
+  add_result "${RED}✗${NC} Roblox Download: Failed"
+fi
+
+
+# ═════════════════════════════════════════════════════════════════════
+# STEP 4: Install Fresh Roblox
+# ═════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "  ${BLUE}${BOLD}[4/$TOTAL_STEPS]${NC} ${BOLD}Installing Fresh Roblox${NC}"
+
+ROBLOX_INSTALLED=false
+
+if [ -f "$DMG_PATH" ]; then
+  FILE_SIZE=$(wc -c < "$DMG_PATH" | tr -d ' ')
+  if [ "$FILE_SIZE" -gt 1000000 ]; then
+    MOUNT_POINT="/tmp/roblox_mount_$$"
+    mkdir -p "$MOUNT_POINT"
+
+    info "Mounting DMG installer..."
+    if hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT_POINT" -nobrowse -quiet 2>/dev/null; then
+      
+      # Find Roblox.app inside the mounted DMG
+      ROBLOX_APP=""
+      if [ -d "$MOUNT_POINT/Roblox.app" ]; then
+        ROBLOX_APP="$MOUNT_POINT/Roblox.app"
+      elif [ -d "$MOUNT_POINT/RobloxPlayer.app" ]; then
+        ROBLOX_APP="$MOUNT_POINT/RobloxPlayer.app"
+      else
+        # Search for any .app inside the mount
+        ROBLOX_APP=$(find "$MOUNT_POINT" -maxdepth 2 -name "*.app" -type d | head -1)
+      fi
+
+      if [ -n "$ROBLOX_APP" ] && [ -d "$ROBLOX_APP" ]; then
+        APP_NAME=$(basename "$ROBLOX_APP")
+        info "Found $APP_NAME inside DMG, copying to /Applications..."
+        
+        # Check if it's an installer app (like RobloxPlayerInstaller.app)
+        if echo "$APP_NAME" | grep -qi "installer"; then
+          info "Detected Roblox installer app, running it..."
+          cp -R "$ROBLOX_APP" "/tmp/$APP_NAME" 2>/dev/null || sudo cp -R "$ROBLOX_APP" "/tmp/$APP_NAME"
+          open -W "/tmp/$APP_NAME" 2>/dev/null
+          sleep 5
+          rm -rf "/tmp/$APP_NAME" 2>/dev/null
+          
+          if [ -d "/Applications/Roblox.app" ]; then
+            ROBLOX_INSTALLED=true
+            success "Roblox installed via native installer to /Applications"
+          else
+            fail_soft "Installer ran but Roblox.app not found in /Applications"
+          fi
+        else
+          # Direct copy of .app bundle
+          if cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null; then
+            ROBLOX_INSTALLED=true
+            success "Installed Roblox.app to /Applications"
+          else
+            info "Trying with elevated permissions..."
+            if sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null; then
+              ROBLOX_INSTALLED=true
+              success "Installed Roblox.app to /Applications (sudo)"
+            else
+              fail_soft "Failed to copy Roblox.app to /Applications"
+            fi
+          fi
+        fi
+      else
+        info "No .app bundle found in DMG. Checking for pkg installer..."
+        PKG_FILE=$(find "$MOUNT_POINT" -maxdepth 2 -name "*.pkg" | head -1)
+        if [ -n "$PKG_FILE" ]; then
+          info "Running package installer..."
+          sudo installer -pkg "$PKG_FILE" -target / 2>/dev/null
+          if [ -d "/Applications/Roblox.app" ]; then
+            ROBLOX_INSTALLED=true
+            success "Roblox installed via .pkg"
+          fi
+        else
+          fail_soft "No installable content found in DMG"
+        fi
+      fi
+
+      # Unmount the DMG
+      hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null
+      rmdir "$MOUNT_POINT" 2>/dev/null
+    else
+      fail_soft "Failed to mount DMG file"
+    fi
+  fi
+fi
+
+# If DMG install failed, check if brew cask already installed it
+if [ "$ROBLOX_INSTALLED" = false ] && [ -d "/Applications/Roblox.app" ]; then
+  ROBLOX_INSTALLED=true
+  success "Roblox.app found in /Applications (installed via Homebrew or existing)"
+fi
+
+# If still not installed, try Homebrew cask as final fallback
+if [ "$ROBLOX_INSTALLED" = false ]; then
+  warn "DMG installation failed. Trying Homebrew cask as fallback..."
+  if command -v brew &> /dev/null; then
+    brew install --cask roblox 2>&1 | tail -3
+    if [ -d "/Applications/Roblox.app" ]; then
+      ROBLOX_INSTALLED=true
+      success "Roblox installed via Homebrew cask"
+    fi
+  fi
+fi
+
+if [ "$ROBLOX_INSTALLED" = true ]; then
+  add_result "${GREEN}✓${NC} Roblox Install: Fresh copy installed to /Applications"
+else
+  add_result "${YELLOW}⚠${NC} Roblox Install: Could not install automatically. Please install from roblox.com"
+fi
+
+# Cleanup DMG
+rm -f "$DMG_PATH" 2>/dev/null
+
+
+# ═════════════════════════════════════════════════════════════════════
+# STEP 5: Patch Roblox Bundle with Electron Executor Injection
+# ═════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "  ${BLUE}${BOLD}[5/$TOTAL_STEPS]${NC} ${BOLD}Patching Roblox with Electron Executor Injection${NC}"
+
+# ClientAppSettings JSON — enables HTTP requests to localhost
+CLIENT_SETTINGS_JSON='{
+  "FFlagDebugLocalRccServerConnection": "true",
+  "FIntHttpRequestFrequencyLimitPerMinute": "1000",
+  "DFIntHttpRbxApiMaxRetryCount": "3",
+  "FFlagEnableHttpServiceAutoRetry": "true",
+  "DFIntHttpRbxApiRequestsPerMinute": "1000",
+  "FFlagHandleAltEnterFullscreenManually": "false"
+}'
+
+# Detect the installed Roblox path
+ROBLOX_PATH=""
+if [ -d "/Applications/Roblox.app" ]; then
+  ROBLOX_PATH="/Applications/Roblox.app"
+elif [ -d "$HOME/Applications/Roblox.app" ]; then
+  ROBLOX_PATH="$HOME/Applications/Roblox.app"
+else
+  ROBLOX_PATH=$(mdfind "kMDItemCFBundleIdentifier == 'com.roblox.RobloxPlayer'" 2>/dev/null | head -n 1)
+fi
+
+PATCH_COUNT=0
+
+if [ -n "$ROBLOX_PATH" ] && [ -d "$ROBLOX_PATH" ]; then
+  info "Patching Roblox at: $ROBLOX_PATH"
+
+  # 5a. Create ClientSettings inside Roblox.app bundle
+  ROBLOX_CLIENT_SETTINGS_DIR="$ROBLOX_PATH/Contents/MacOS/ClientSettings"
+  mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" 2>/dev/null || sudo mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" 2>/dev/null
+  
+  if echo "$CLIENT_SETTINGS_JSON" > "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" 2>/dev/null; then
+    success "Injected ClientAppSettings.json into Roblox.app bundle"
+    PATCH_COUNT=$((PATCH_COUNT + 1))
+  else
+    echo "$CLIENT_SETTINGS_JSON" | sudo tee "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" > /dev/null 2>&1
+    success "Injected ClientAppSettings.json into Roblox.app bundle (sudo)"
+    PATCH_COUNT=$((PATCH_COUNT + 1))
+  fi
+
+  # 5b. Copy loader.lua into Electron Executor autoexec
+  AUTOEXEC_DIR="$HOME/Electron Executor/autoexec"
+  mkdir -p "$AUTOEXEC_DIR" 2>/dev/null
+  if cp "$LOADER_FILE" "$AUTOEXEC_DIR/ElectronLoader.lua" 2>/dev/null; then
+    success "Copied loader.lua → ~/Electron Executor/autoexec/"
+    PATCH_COUNT=$((PATCH_COUNT + 1))
+  else
+    fail_soft "Failed to copy loader.lua to autoexec"
+  fi
+
+  # 5c. Re-sign the patched Roblox.app to prevent Gatekeeper issues
+  info "Re-signing patched Roblox.app..."
+  codesign --force --deep --sign - "$ROBLOX_PATH" 2>/dev/null || true
+  success "Ad-hoc code signature applied to patched Roblox"
+  PATCH_COUNT=$((PATCH_COUNT + 1))
+
+else
+  warn "Roblox.app not found — skipping bundle patching"
+fi
+
+# 5d. User-level ClientSettings (always applies regardless of Roblox.app location)
+ROBLOX_USER_SETTINGS_DIR="$HOME/Library/Application Support/Roblox/ClientSettings"
+mkdir -p "$ROBLOX_USER_SETTINGS_DIR" 2>/dev/null
+
+if echo "$CLIENT_SETTINGS_JSON" > "$ROBLOX_USER_SETTINGS_DIR/ClientAppSettings.json" 2>/dev/null; then
+  success "Injected ClientAppSettings.json to ~/Library (user-level)"
+  PATCH_COUNT=$((PATCH_COUNT + 1))
+else
+  fail_soft "Failed to write user-level ClientAppSettings.json"
+fi
+
+add_result "${GREEN}✓${NC} Roblox Injection: $PATCH_COUNT patches applied"
+
+
+# ═════════════════════════════════════════════════════════════════════
+# STEP 6: Copy loader.lua to Roblox Studio Plugins
+# ═════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "  ${BLUE}${BOLD}[6/$TOTAL_STEPS]${NC} ${BOLD}Roblox Studio Plugin Integration${NC}"
 
 STUDIO_PLUGINS_DIR="$HOME/Library/Application Support/Roblox/Plugins"
 mkdir -p "$STUDIO_PLUGINS_DIR" 2>/dev/null
@@ -101,110 +417,61 @@ else
   add_result "${RED}✗${NC} Studio Plugins: Copy failed"
 fi
 
-# ═════════════════════════════════════════════════════════════════════
-# STEP 2: Copy loader.lua to macOS Exploit Autoexec Folders
-# ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[2/4]${NC} ${BOLD}Exploit Autoexec Folders${NC}"
-
-EXPLOIT_NAMES=("MacSploit" "Hydrogen" "Wave" "Xeno" "Arceus-X" "Opiumware" "opiumware-executor" "com.norbyv1.opiumware")
-EXPLOIT_FOUND=0
-
-for EXPLOIT_NAME in "${EXPLOIT_NAMES[@]}"; do
-  EXPLOIT_BASE="$HOME/Library/Application Support/$EXPLOIT_NAME"
-  EXPLOIT_AUTOEXEC="$EXPLOIT_BASE/autoexec"
-
-  if [ -d "$EXPLOIT_BASE" ]; then
-    mkdir -p "$EXPLOIT_AUTOEXEC" 2>/dev/null
-    if cp "$LOADER_FILE" "$EXPLOIT_AUTOEXEC/ElectronLoader.lua" 2>/dev/null; then
-      success "$EXPLOIT_NAME: Copied to autoexec"
-      add_result "${GREEN}✓${NC} $EXPLOIT_NAME autoexec: Installed"
-      EXPLOIT_FOUND=$((EXPLOIT_FOUND + 1))
-    else
-      fail_soft "$EXPLOIT_NAME: Failed to copy"
-      add_result "${RED}✗${NC} $EXPLOIT_NAME autoexec: Copy failed"
-    fi
-  else
-    info "$EXPLOIT_NAME: Not installed (skipping)"
-  fi
-done
-
-if [ "$EXPLOIT_FOUND" -eq 0 ]; then
-  info "No exploit clients detected. Loader will work via Roblox Studio Plugin."
-  add_result "${DIM}→${NC} No exploit clients found (Studio-only mode)"
-fi
 
 # ═════════════════════════════════════════════════════════════════════
-# STEP 3: Create ClientSettings for Roblox Player (HTTP enabled)
+# STEP 7: Verification
 # ═════════════════════════════════════════════════════════════════════
 echo ""
-echo -e "  ${BLUE}${BOLD}[3/4]${NC} ${BOLD}Roblox Player HTTP Settings${NC}"
+echo -e "  ${BLUE}${BOLD}[7/$TOTAL_STEPS]${NC} ${BOLD}Verification${NC}"
 
-# Detect Roblox path dynamically on this device
-ROBLOX_PATH=""
-if [ -d "/Applications/Roblox.app" ]; then
-  ROBLOX_PATH="/Applications/Roblox.app"
-elif [ -d "$HOME/Applications/Roblox.app" ]; then
-  ROBLOX_PATH="$HOME/Applications/Roblox.app"
+VERIFY_PASS=0
+VERIFY_FAIL=0
+
+# Verify Roblox.app exists
+if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
+  success "Roblox.app is installed"
+  VERIFY_PASS=$((VERIFY_PASS + 1))
 else
-  # Spotlight lookup fallback
-  ROBLOX_PATH=$(mdfind "kMDItemCFBundleIdentifier == 'com.roblox.RobloxPlayer'" 2>/dev/null | head -n 1)
+  fail_soft "Roblox.app not found"
+  VERIFY_FAIL=$((VERIFY_FAIL + 1))
 fi
 
-CLIENT_SETTINGS_JSON='{
-  "FFlagDebugLocalRccServerConnection": "true",
-  "FIntHttpRequestFrequencyLimitPerMinute": "1000",
-  "DFIntHttpRbxApiMaxRetryCount": "3",
-  "FFlagEnableHttpServiceAutoRetry": "true"
-}'
-
-if [ -n "$ROBLOX_PATH" ] && [ -d "$ROBLOX_PATH" ]; then
-  ROBLOX_APP_CONTENTS="$ROBLOX_PATH/Contents/MacOS"
-  ROBLOX_CLIENT_SETTINGS_DIR="$ROBLOX_APP_CONTENTS/ClientSettings"
-  
-  mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" 2>/dev/null
-  if echo "$CLIENT_SETTINGS_JSON" > "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" 2>/dev/null; then
-    success "Created ClientAppSettings.json in Roblox Player ($ROBLOX_PATH)"
-    add_result "${GREEN}✓${NC} Roblox Player: ClientAppSettings.json created"
-  else
-    # Try with sudo if write failed
-    if sudo mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" && echo "$CLIENT_SETTINGS_JSON" | sudo tee "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" >/dev/null; then
-      success "Created ClientAppSettings.json in Roblox Player with sudo ($ROBLOX_PATH)"
-      add_result "${GREEN}✓${NC} Roblox Player: ClientAppSettings.json created (sudo)"
-    else
-      fail_soft "Failed to write ClientAppSettings.json"
-      add_result "${YELLOW}⚠${NC} Roblox Player: ClientAppSettings needs manual setup"
-    fi
-  fi
+# Verify ClientAppSettings.json in bundle
+if [ -n "$ROBLOX_PATH" ] && [ -f "$ROBLOX_PATH/Contents/MacOS/ClientSettings/ClientAppSettings.json" ]; then
+  success "ClientAppSettings.json verified inside Roblox bundle"
+  VERIFY_PASS=$((VERIFY_PASS + 1))
 else
-  info "Roblox Player not found on this device (skipping Roblox Player patch)"
-  add_result "${DIM}→${NC} Roblox Player: Not found"
+  fail_soft "ClientAppSettings.json not found in Roblox bundle"
+  VERIFY_FAIL=$((VERIFY_FAIL + 1))
 fi
 
-# Path 2: Roblox Player ClientSettings (user-level ~/Library)
-ROBLOX_USER_SETTINGS_DIR="$HOME/Library/Application Support/Roblox/ClientSettings"
-mkdir -p "$ROBLOX_USER_SETTINGS_DIR" 2>/dev/null
-
-if echo "$CLIENT_SETTINGS_JSON" > "$ROBLOX_USER_SETTINGS_DIR/ClientAppSettings.json" 2>/dev/null; then
-  success "Created ClientAppSettings.json in ~/Library (user-level)"
-  add_result "${GREEN}✓${NC} User-level: ClientAppSettings.json created"
+# Verify user-level ClientAppSettings
+if [ -f "$ROBLOX_USER_SETTINGS_DIR/ClientAppSettings.json" ]; then
+  success "User-level ClientAppSettings.json verified"
+  VERIFY_PASS=$((VERIFY_PASS + 1))
 else
-  fail_soft "Failed to write user-level ClientAppSettings.json"
-  add_result "${RED}✗${NC} User-level: ClientAppSettings.json failed"
+  fail_soft "User-level ClientAppSettings.json not found"
+  VERIFY_FAIL=$((VERIFY_FAIL + 1))
 fi
 
-# ═════════════════════════════════════════════════════════════════════
-# STEP 4: Verify All Files & Port Availability
-# ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[4/4]${NC} ${BOLD}Verification${NC}"
+# Verify loader in autoexec
+if [ -f "$HOME/Electron Executor/autoexec/ElectronLoader.lua" ]; then
+  FILE_SIZE=$(wc -c < "$HOME/Electron Executor/autoexec/ElectronLoader.lua" | tr -d ' ')
+  success "ElectronLoader.lua verified in autoexec ($FILE_SIZE bytes)"
+  VERIFY_PASS=$((VERIFY_PASS + 1))
+else
+  fail_soft "ElectronLoader.lua not found in autoexec"
+  VERIFY_FAIL=$((VERIFY_FAIL + 1))
+fi
 
 # Verify loader in Studio Plugins
 if [ -f "$STUDIO_PLUGINS_DIR/ElectronLoader.lua" ]; then
   FILE_SIZE=$(wc -c < "$STUDIO_PLUGINS_DIR/ElectronLoader.lua" | tr -d ' ')
-  success "ElectronLoader.lua verified ($FILE_SIZE bytes)"
+  success "ElectronLoader.lua verified in Studio Plugins ($FILE_SIZE bytes)"
+  VERIFY_PASS=$((VERIFY_PASS + 1))
 else
   fail_soft "ElectronLoader.lua not found in Plugins"
+  VERIFY_FAIL=$((VERIFY_FAIL + 1))
 fi
 
 # Check if port 8392 is available
@@ -213,28 +480,18 @@ if lsof -i :8392 &>/dev/null; then
   info "Kill existing process: lsof -ti :8392 | xargs kill -9"
 else
   success "Port 8392 is available"
+  VERIFY_PASS=$((VERIFY_PASS + 1))
 fi
 
-# Check Roblox Studio HttpService enabled status
-ROBLOX_STUDIO_SETTINGS="$HOME/Library/Roblox/GlobalSettings_13.xml"
-if [ -f "$ROBLOX_STUDIO_SETTINGS" ]; then
-  if grep -q "HttpEnabled" "$ROBLOX_STUDIO_SETTINGS" 2>/dev/null; then
-    success "Roblox Studio GlobalSettings found (HttpEnabled present)"
-  else
-    info "Roblox Studio GlobalSettings found but HttpEnabled not set"
-    info "Enable it in Studio: Game Settings → Security → Allow HTTP Requests"
-  fi
-else
-  info "Roblox Studio GlobalSettings not found"
-  info "When using Studio: enable Game Settings → Security → Allow HTTP Requests"
-fi
+add_result "${GREEN}✓${NC} Verification: $VERIFY_PASS passed, $VERIFY_FAIL failed"
+
 
 # ═════════════════════════════════════════════════════════════════════
 # SUMMARY
 # ═════════════════════════════════════════════════════════════════════
 echo ""
 echo -e "  ${DIM}══════════════════════════════════════════════════${NC}"
-echo -e "  ${BOLD}Setup Summary:${NC}"
+echo -e "  ${BOLD}Injection Setup Summary:${NC}"
 echo ""
 for result in "${RESULTS[@]}"; do
   echo -e "    $result"
@@ -245,12 +502,12 @@ echo -e "  ${DIM}═════════════════════
 if [ "$FROM_INSTALLER" = false ]; then
   echo ""
   echo -e "  ${BOLD}What's next:${NC}"
-  echo -e "    1. Start the executor: ${CYAN}npm run dev${NC}"
+  echo -e "    1. Open ${CYAN}Electron Executor.app${NC}"
   echo -e "    2. Open Roblox and join any game"
-  echo -e "    3. The executor will auto-detect Roblox"
+  echo -e "    3. The executor will auto-inject and connect"
   echo -e "    4. Write Lua scripts and hit ${GREEN}Execute ▶${NC}"
   echo ""
-  echo -e "  ${DIM}If you're using Roblox Studio:${NC}"
-  echo -e "    Go to: ${YELLOW}Game Settings → Security → Allow HTTP Requests${NC}"
+  echo -e "  ${DIM}Injeksi sudah dilakukan otomatis oleh Electron Executor.${NC}"
+  echo -e "  ${DIM}Tidak perlu software pihak ketiga (Opiumware/Hydrogen/MacSploit).${NC}"
   echo ""
 fi

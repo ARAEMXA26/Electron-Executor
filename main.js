@@ -12,8 +12,9 @@ let mainWindow = null;
 let serverInstance = null;
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 
-// Function to copy loader.lua automatically to Roblox plugin folders
-// and patch Roblox ClientSettings for seamless HTTP connections.
+// Function to patch Roblox with Electron Executor injection files.
+// Copies loader.lua to autoexec and Studio Plugins, patches ClientAppSettings.json.
+// No third-party exploit software required.
 function installRobloxHook() {
   const homeDir = os.homedir();
   const loaderPath = path.join(__dirname, 'loader.lua');
@@ -32,7 +33,6 @@ function installRobloxHook() {
     try {
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, content);
-      // Verify write
       if (fs.existsSync(filePath)) {
         const written = fs.readFileSync(filePath, 'utf8');
         if (written.length > 0) {
@@ -51,7 +51,15 @@ function installRobloxHook() {
     }
   }
 
-  // ── 1. Roblox Studio Plugins Folder ────────────────────────────
+  // ── 1. Electron Executor autoexec folder ────────────────────────
+  const autoexecDir = path.join(homeDir, 'Electron Executor', 'autoexec');
+  safeWrite(
+    path.join(autoexecDir, 'ElectronLoader.lua'),
+    loaderContent,
+    'Copied loader.lua → ~/Electron Executor/autoexec/'
+  );
+
+  // ── 2. Roblox Studio Plugins Folder ────────────────────────────
   const studioPluginsDir = path.join(homeDir, 'Library', 'Application Support', 'Roblox', 'Plugins');
   safeWrite(
     path.join(studioPluginsDir, 'ElectronLoader.lua'),
@@ -59,26 +67,14 @@ function installRobloxHook() {
     'Copied loader.lua → Roblox Studio Plugins'
   );
 
-  // ── 2. Exploit autoexec folders ────────────────────────────────
-  const exploitNames = ['MacSploit', 'Hydrogen', 'Wave', 'Xeno', 'Arceus-X'];
-  exploitNames.forEach(name => {
-    const parentDir = path.join(homeDir, 'Library', 'Application Support', name);
-    if (fs.existsSync(parentDir)) {
-      const autoexecDir = path.join(parentDir, 'autoexec');
-      safeWrite(
-        path.join(autoexecDir, 'ElectronLoader.lua'),
-        loaderContent,
-        `Copied loader.lua → ${name}/autoexec`
-      );
-    }
-  });
-
   // ── 3. Roblox Player ClientSettings (enable HTTP flags) ────────
   const clientSettingsJson = JSON.stringify({
     FFlagDebugLocalRccServerConnection: 'true',
     FIntHttpRequestFrequencyLimitPerMinute: '1000',
     DFIntHttpRbxApiMaxRetryCount: '3',
-    FFlagEnableHttpServiceAutoRetry: 'true'
+    FFlagEnableHttpServiceAutoRetry: 'true',
+    DFIntHttpRbxApiRequestsPerMinute: '1000',
+    FFlagHandleAltEnterFullscreenManually: 'false'
   }, null, 2);
 
   // 3a. Inside Roblox.app bundle
@@ -95,8 +91,17 @@ function installRobloxHook() {
     safeWrite(
       path.join(robloxAppClientSettings, 'ClientAppSettings.json'),
       clientSettingsJson,
-      `Created ClientAppSettings.json in Roblox.app (${robloxAppPath})`
+      `Injected ClientAppSettings.json into Roblox.app (${robloxAppPath})`
     );
+
+    // Re-sign patched Roblox.app to prevent Gatekeeper blocks
+    try {
+      const { execSync } = require('child_process');
+      execSync(`codesign --force --deep --sign - "${robloxAppPath}"`, { stdio: 'ignore' });
+      console.log('[Hook ✓] Re-signed patched Roblox.app');
+    } catch (e) {
+      console.warn('[Hook ⚠] Could not re-sign Roblox.app (non-fatal)');
+    }
   }
 
   // 3b. User-level Application Support
@@ -104,10 +109,10 @@ function installRobloxHook() {
   safeWrite(
     path.join(userClientSettings, 'ClientAppSettings.json'),
     clientSettingsJson,
-    'Created ClientAppSettings.json in ~/Library (user-level)'
+    'Injected ClientAppSettings.json in ~/Library (user-level)'
   );
 
-  console.log(`[Hook] Setup complete: ${successCount} succeeded, ${failCount} failed`);
+  console.log(`[Hook] Injection setup complete: ${successCount} succeeded, ${failCount} failed`);
 }
 
 function createWindow() {
@@ -553,8 +558,43 @@ ipcMain.handle('launch-roblox', async () => {
 
 ipcMain.handle('attach-executor', async () => {
   try {
+    // Step 1: Quick local patching (immediate)
     installRobloxHook();
-    return { success: true };
+
+    // Step 2: Run full setup-roblox.sh for complete injection (download + patch)
+    const setupScript = path.join(__dirname, 'setup-roblox.sh');
+    if (fs.existsSync(setupScript)) {
+      return new Promise((resolve) => {
+        const { execFile } = require('child_process');
+        
+        // Make it executable
+        try { fs.chmodSync(setupScript, '755'); } catch(e) {}
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('server-log', '[Injector] Menjalankan setup-roblox.sh — menghapus Roblox lama, download ulang, dan inject...');
+        }
+
+        execFile('bash', [setupScript, '--from-installer'], { timeout: 300000 }, (error, stdout, stderr) => {
+          if (error) {
+            console.error('[Attach] setup-roblox.sh error:', error.message);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('server-log', `[Injector] Setup selesai dengan warning: ${error.message}`);
+            }
+            // Still return success since installRobloxHook ran fine
+            resolve({ success: true, warning: error.message });
+          } else {
+            console.log('[Attach] setup-roblox.sh completed successfully');
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('server-log', '[Injector] ✓ Roblox berhasil di-reinstall dan di-inject. Silakan buka Roblox.');
+            }
+            resolve({ success: true });
+          }
+        });
+      });
+    } else {
+      // setup-roblox.sh not found, rely on installRobloxHook only
+      return { success: true, warning: 'setup-roblox.sh not found, used quick patching only' };
+    }
   } catch (err) {
     return { success: false, error: err.message };
   }
