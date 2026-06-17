@@ -406,15 +406,14 @@ export default function MainPage() {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab) return;
 
-    // Verify connection hook status if Roblox is active
+    // If Roblox is running but not yet connected, still send the script (it gets queued)
     if (robloxProcess.running && !connectionStatus.connected) {
-      appendLog("Roblox belum di-patch! Klik tombol ⚡ Attach untuk memasang injeksi Electron Executor.", 'roblox-warn', 'console');
+      appendLog(`Script "${tab.name}" diantrekan — menunggu koneksi otomatis ke Roblox...`, 'info-log', 'console');
       setToast({
         show: true,
-        message: "Roblox belum di-patch! Klik ⚡ Attach untuk injeksi.",
-        type: 'warning'
+        message: `Script diantrekan — menunggu koneksi Roblox...`,
+        type: 'info'
       });
-      return;
     }
 
     // Check script compatibility (only when a specific game is active)
@@ -502,15 +501,14 @@ export default function MainPage() {
     const activeTab = tabs.find(t => t.id === activeTabId);
     if (!activeTab) return;
 
-    // Verify connection hook status if Roblox is active
+    // If Roblox is running but not yet connected, still send the script (it gets queued)
     if (robloxProcess.running && !connectionStatus.connected) {
-      appendLog("Roblox belum di-patch! Klik tombol ⚡ Attach untuk memasang injeksi Electron Executor.", 'roblox-warn', 'console');
+      appendLog(`Script "${activeTab.name}" diantrekan — menunggu koneksi otomatis ke Roblox...`, 'info-log', 'console');
       setToast({
         show: true,
-        message: "Roblox belum di-patch! Klik ⚡ Attach untuk injeksi.",
-        type: 'warning'
+        message: `Script diantrekan — menunggu koneksi Roblox...`,
+        type: 'info'
       });
-      return;
     }
 
     // Check script compatibility (only when a specific game is active)
