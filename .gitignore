@@ -4,6 +4,7 @@ node_modules/
 # Next.js build and export outputs
 .next/
 out/
+dist/
 
 # Secret and configuration files
 device_id.json

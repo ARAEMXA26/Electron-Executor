@@ -70,7 +70,7 @@ fail() {
 # ── Configuration ────────────────────────────────────────────────────
 REPO_URL="https://github.com/ARAEMXA26/Electron-Executor.git"
 INSTALL_DIR="$HOME/Documents/ElectronExecutor"
-TOTAL_STEPS=6
+TOTAL_STEPS=7
 
 # ── Start ────────────────────────────────────────────────────────────
 print_banner
@@ -175,8 +175,34 @@ else
   fail "Failed to install dependencies. Check the error above."
 fi
 
-# ── Step 5: Auto-setup Roblox ────────────────────────────────────────
-step 5 "Setting up Roblox integration..."
+# ── Step 5: Build and package macOS App ──────────────────────────────
+step 5 "Building and packaging macOS App..."
+
+cd "$INSTALL_DIR"
+info "Compiling production build..."
+npm run build 2>&1 | tail -3 || fail "Failed to compile production build."
+
+info "Packaging Electron app..."
+# Packages the app dynamically based on the current architecture
+npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist 2>&1 | tail -3 || fail "Failed to package Electron application."
+
+info "Installing to /Applications..."
+# Find the generated app path
+APP_PATH=$(find dist -maxdepth 2 -name "Electron Executor.app" | head -n 1)
+if [ -z "$APP_PATH" ]; then
+  fail "Failed to find compiled Electron Executor.app in dist/"
+fi
+
+# Copy to Applications folder (requires no sudo for user-writable Applications folder)
+if cp -R "$APP_PATH" "/Applications/" 2>/dev/null; then
+  success "Successfully installed to /Applications/Electron Executor.app"
+else
+  warn "Failed to install directly to /Applications. Trying with sudo..."
+  sudo cp -R "$APP_PATH" "/Applications/" || fail "Could not install to /Applications. Please drag-and-drop the app manually from $INSTALL_DIR/$APP_PATH."
+fi
+
+# ── Step 6: Auto-setup Roblox ────────────────────────────────────────
+step 6 "Setting up Roblox integration..."
 
 if [ -f "$INSTALL_DIR/setup-roblox.sh" ]; then
   chmod +x "$INSTALL_DIR/setup-roblox.sh"
@@ -187,17 +213,17 @@ else
   warn "You can run it manually later: ./setup-roblox.sh"
 fi
 
-# ── Step 6: Launch application ───────────────────────────────────────
-step 6 "Launching Electron Executor..."
+# ── Step 7: Launch application ───────────────────────────────────────
+step 7 "Launching Electron Executor..."
 
 echo ""
 echo -e "${GREEN}${BOLD}  ╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}${BOLD}  ║          ✅ Installation Complete!                   ║${NC}"
 echo -e "${GREEN}${BOLD}  ╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  ${BOLD}Location:${NC}    $INSTALL_DIR"
-echo -e "  ${BOLD}Run again:${NC}   ${CYAN}cd $INSTALL_DIR && npm run dev${NC}"
-echo -e "  ${BOLD}Roblox fix:${NC}  ${CYAN}cd $INSTALL_DIR && ./setup-roblox.sh${NC}"
+echo -e "  ${BOLD}App Location:${NC}  /Applications/Electron Executor.app"
+echo -e "  ${BOLD}Dev Folder:${NC}    $INSTALL_DIR"
+echo -e "  ${BOLD}Roblox fix:${NC}    ${CYAN}cd $INSTALL_DIR && ./setup-roblox.sh${NC}"
 echo ""
 echo -e "  ${DIM}────────────────────────────────────────────${NC}"
 echo -e "  ${YELLOW}How to use:${NC}"
@@ -208,5 +234,4 @@ echo -e "  4. Write/load Lua scripts and press ${GREEN}Execute ▶${NC}"
 echo -e "  ${DIM}────────────────────────────────────────────${NC}"
 echo ""
 
-cd "$INSTALL_DIR"
-npm run dev
+open "/Applications/Electron Executor.app"
