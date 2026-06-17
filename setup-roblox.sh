@@ -20,6 +20,9 @@
 
 set -e
 
+# Ensure Homebrew and standard command line tool paths are in PATH
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # ── Color codes ──────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -201,7 +204,7 @@ if [ "$ROBLOX_INSTALLED" = false ]; then
   DOWNLOADED=false
   for URL in "${DOWNLOAD_URLS[@]}"; do
     info "Trying: $URL"
-    if curl -L -o "$DMG_PATH" "$URL" --connect-timeout 15 --max-time 120 -s 2>/dev/null; then
+    if curl -L -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" -o "$DMG_PATH" "$URL" --connect-timeout 15 --max-time 120 -s 2>/dev/null; then
       # Verify it's actually a DMG (check magic bytes)
       if file "$DMG_PATH" 2>/dev/null | grep -qi "disk image\|dmg\|apple"; then
         DOWNLOADED=true
@@ -228,15 +231,26 @@ if [ "$ROBLOX_INSTALLED" = false ]; then
         if echo "$APP_NAME" | grep -qi "installer"; then
           # It's an installer app — run it
           cp -R "$ROBLOX_APP" "/tmp/$APP_NAME" 2>/dev/null
-          open -W "/tmp/$APP_NAME" 2>/dev/null
-          sleep 3
+          info "Launching Roblox installer UI..."
+          open -W "/tmp/$APP_NAME" 2>/dev/null || open "/tmp/$APP_NAME" 2>/dev/null
+          
+          # Poll to see if Roblox.app is created (timeout after 60 seconds)
+          info "Waiting for Roblox installation to complete..."
+          for i in {1..60}; do
+            if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
+              break
+            fi
+            sleep 1
+          done
+          
+          sleep 2 # Extra buffer time for file writing
           rm -rf "/tmp/$APP_NAME" 2>/dev/null
         else
           # Direct .app bundle — copy to /Applications
           cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null || sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null
         fi
         
-        if [ -d "/Applications/Roblox.app" ]; then
+        if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
           ROBLOX_INSTALLED=true
           success "Roblox installed from DMG"
         fi
@@ -250,7 +264,7 @@ if [ "$ROBLOX_INSTALLED" = false ]; then
 fi
 
 if [ "$ROBLOX_INSTALLED" = true ]; then
-  add_result "${GREEN}✓${NC} Roblox Install: Fresh copy installed to /Applications"
+  add_result "${GREEN}✓${NC} Roblox Install: Fresh copy installed"
 else
   warn "Could not install Roblox automatically."
   info "Please install manually from https://www.roblox.com/download"

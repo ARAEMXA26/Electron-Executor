@@ -13,6 +13,9 @@
 
 set -e
 
+# Ensure Homebrew and standard command line tool paths are in PATH
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 # ── Color codes ──────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
