@@ -184,7 +184,8 @@ npm run build 2>&1 | tail -3 || fail "Failed to compile production build."
 
 # Packages the Electron app dynamically based on the current architecture
 info "Packaging Electron app via electron-packager..."
-npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist --ignore="\\.git|dist|\\.next/cache" 2>&1 | tail -3 || fail "Failed to package Electron application."
+npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist --ignore='^/dist($|/)|^/\.git($|/)|^/\.next/cache($|/)' 2>&1 | tail -3 || fail "Failed to package Electron application."
+
 
 info "Installing to /Applications..."
 # Find the generated app path
