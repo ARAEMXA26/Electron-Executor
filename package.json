@@ -1,0 +1,41 @@
+{
+  "name": "electron-executor",
+  "version": "1.0.0",
+  "description": "Premium Lua Script Executor for Roblox on macOS",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "build": "next build"
+  },
+  "keywords": [
+    "lua",
+    "executor",
+    "roblox",
+    "macos"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@tailwindcss/postcss": "^4.3.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.20.0",
+    "next": "^16.2.9",
+    "nodemailer": "^9.0.0",
+    "pg": "^8.21.0",
+    "postcss": "^8.5.15",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "wasmoon": "^1.16.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.0.0-beta.8",
+    "concurrently": "^10.0.3",
+    "electron": "^33.2.0",
+    "wait-on": "^9.0.10"
+  }
+}
