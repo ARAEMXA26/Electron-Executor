@@ -148,21 +148,32 @@ fi
 # ── Step 3: Clone or update repository ──────────────────────────────
 step 3 "Downloading Electron Executor..."
 
-if [ -d "$INSTALL_DIR/.git" ]; then
-  info "Existing installation found. Updating..."
-  cd "$INSTALL_DIR"
-  git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || warn "Could not pull latest changes (continuing with existing files)"
-  success "Repository updated"
-else
-  if [ -d "$INSTALL_DIR" ]; then
-    info "Directory exists but is not a git repo. Backing up..."
-    mv "$INSTALL_DIR" "${INSTALL_DIR}_backup_$(date +%s)"
+# Deleting old Electron Executor installations to ensure a fresh clean reinstall
+if [ -d "/Applications/Electron Executor.app" ]; then
+  info "Removing old Electron Executor application..."
+  rm -rf "/Applications/Electron Executor.app" 2>/dev/null || true
+  if [ -d "/Applications/Electron Executor.app" ]; then
+    warn "Failed to remove old app. Trying with sudo..."
+    sudo rm -rf "/Applications/Electron Executor.app" || true
   fi
-  info "Cloning from GitHub..."
-  git clone "$REPO_URL" "$INSTALL_DIR" || fail "Failed to clone repository. Check your internet connection."
-  cd "$INSTALL_DIR"
-  success "Repository cloned to $INSTALL_DIR"
 fi
+
+if [ -d "$INSTALL_DIR" ]; then
+  info "Removing old Electron Executor source directory..."
+  if [[ "$(pwd)" == "$INSTALL_DIR"* ]]; then
+    cd "$HOME"
+  fi
+  rm -rf "$INSTALL_DIR" 2>/dev/null || true
+  if [ -d "$INSTALL_DIR" ]; then
+    warn "Failed to remove old source directory. Trying with sudo..."
+    sudo rm -rf "$INSTALL_DIR" || true
+  fi
+fi
+
+info "Cloning fresh repository from GitHub..."
+git clone "$REPO_URL" "$INSTALL_DIR" || fail "Failed to clone repository. Check your internet connection."
+cd "$INSTALL_DIR"
+success "Repository cloned to $INSTALL_DIR"
 
 # ── Step 4: Install Node.js dependencies ────────────────────────────
 step 4 "Installing Node.js dependencies..."
@@ -195,7 +206,11 @@ if [ -z "$APP_PATH" ]; then
 fi
 
 # Clean previous install
-rm -rf "/Applications/Electron Executor.app"
+rm -rf "/Applications/Electron Executor.app" 2>/dev/null || true
+if [ -d "/Applications/Electron Executor.app" ]; then
+  warn "Failed to remove old app. Trying with sudo..."
+  sudo rm -rf "/Applications/Electron Executor.app" || fail "Could not remove old Electron Executor.app from /Applications."
+fi
 
 # Copy to Applications folder (requires no sudo for user-writable Applications folder)
 if cp -R "$APP_PATH" "/Applications/" 2>/dev/null; then
