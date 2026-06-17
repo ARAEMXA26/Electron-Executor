@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -424,6 +424,19 @@ app.on('window-all-closed', () => {
 ipcMain.on('execute-script', async (event, { scriptContent, scriptName }) => {
   // Check if there are any external WebSocket clients connected (exploit/Studio)
   if (hasConnectedClients()) {
+    // Show native macOS notification
+    try {
+      if (Notification.isSupported()) {
+        new Notification({
+          title: 'Electron Executor',
+          body: `Executing script "${scriptName || 'unnamed.lua'}" inside Roblox...`,
+          silent: true
+        }).show();
+      }
+    } catch (err) {
+      console.error('[Notification Error]', err);
+    }
+
     // Mode 1: Forward to local Express server (external executor connected)
     const http = require('http');
     const postData = JSON.stringify({ scriptContent, scriptName });

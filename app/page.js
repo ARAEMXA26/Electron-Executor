@@ -90,6 +90,18 @@ export default function MainPage() {
   const [activeTabId, setActiveTabId] = useState(null);
   const [nextTabId, setNextTabId] = useState(1);
 
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  // Auto-hide toast after 3 seconds
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast(prev => ({ ...prev, show: false }));
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
+
   // Console Logs
   const [logs, setLogs] = useState({
     console: [{ text: 'Console system ready. Port: 8392', type: 'info-log' }],
@@ -401,13 +413,24 @@ export default function MainPage() {
       const allowedId = parseInt(placeIdMatch[1]);
       if (allowedId !== parseInt(activeGame.placeId)) {
         appendLog('Execution cancelled: script not compatible with current game.', 'roblox-warn', 'console');
-        alert(`This script is only compatible with Place ID: ${allowedId}. Active game Place ID is: ${activeGame.placeId}.`);
+        setToast({
+          show: true,
+          message: `Script not compatible with current game! Only Place: ${allowedId}`,
+          type: 'error'
+        });
         return;
       }
     }
 
     appendLog(`Menjalankan script: ${tab.name}`, 'system-log', 'console');
     window.electronAPI.executeScript(tab.content, tab.name);
+    
+    // Show premium toast notification
+    setToast({
+      show: true,
+      message: `Script "${tab.name}" sent to Roblox successfully!`,
+      type: 'success'
+    });
   };
 
   const handleTabAdd = async () => {
@@ -475,13 +498,24 @@ export default function MainPage() {
       const allowedId = parseInt(placeIdMatch[1]);
       if (allowedId !== parseInt(activeGame.placeId)) {
         appendLog('Execution cancelled: script not compatible with current game.', 'roblox-warn', 'console');
-        alert(`This script is only compatible with Place ID: ${allowedId}. Active game Place ID is: ${activeGame.placeId}.`);
+        setToast({
+          show: true,
+          message: `Script not compatible with current game! Only Place: ${allowedId}`,
+          type: 'error'
+        });
         return;
       }
     }
 
     appendLog(`Menjalankan script: ${activeTab.name}`, 'system-log', 'console');
     window.electronAPI.executeScript(activeTab.content, activeTab.name);
+    
+    // Show premium toast notification
+    setToast({
+      show: true,
+      message: `Script "${activeTab.name}" sent to Roblox successfully!`,
+      type: 'success'
+    });
   };
 
   const handleOpenFile = async () => {
@@ -737,6 +771,26 @@ export default function MainPage() {
               />
             </main>
           </div>
+
+          {/* Premium Toast popup notification overlay */}
+          <AnimatePresence>
+            {toast.show && (
+              <motion.div
+                initial={{ opacity: 0, y: -50, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                className={`fixed top-16 right-4 z-[9999] flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-md shadow-lg ${
+                  toast.type === 'success' 
+                    ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200 shadow-emerald-950/20' 
+                    : 'bg-rose-500/20 border-rose-500/30 text-rose-200 shadow-rose-950/20'
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${toast.type === 'success' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                <span className="text-sm font-medium">{toast.message}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </>
       )}
     </div>

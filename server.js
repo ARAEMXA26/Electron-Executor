@@ -276,7 +276,7 @@ function startServer(port = 8392, onLogCallback = null) {
 }
 
 function hasConnectedClients() {
-  return wsClients.size > 0;
+  return wsClients.size > 0 || (activeGameInfo && activeGameInfo.placeId !== null);
 }
 
 function getActiveGameInfo() {
