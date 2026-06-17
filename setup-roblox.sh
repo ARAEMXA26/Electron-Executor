@@ -161,150 +161,23 @@ if [ "$REMOVED" -eq 0 ]; then
 fi
 add_result "${GREEN}✓${NC} Old Roblox: Removed ($REMOVED app bundles cleaned)"
 
-
 # ═════════════════════════════════════════════════════════════════════
-# STEP 3: Download Fresh Roblox Installer
-# ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[3/$TOTAL_STEPS]${NC} ${BOLD}Downloading Fresh Roblox Installer${NC}"
-
-DMG_PATH="/tmp/RobloxPlayer.dmg"
-
-# Clean up any old download
-rm -f "$DMG_PATH" 2>/dev/null
-
-# Download Roblox Player installer DMG for macOS
-DOWNLOAD_URL="https://www.roblox.com/download/client"
-
-info "Downloading from Roblox CDN..."
-if curl -L -o "$DMG_PATH" "$DOWNLOAD_URL" --progress-bar 2>&1; then
-  FILE_SIZE=$(wc -c < "$DMG_PATH" | tr -d ' ')
-  if [ "$FILE_SIZE" -gt 1000000 ]; then
-    success "Downloaded Roblox installer ($(echo "scale=1; $FILE_SIZE / 1048576" | bc) MB)"
-    add_result "${GREEN}✓${NC} Roblox Download: Success ($(echo "scale=1; $FILE_SIZE / 1048576" | bc) MB)"
-  else
-    # The download might have returned an HTML redirect page, try alternate URL
-    info "Small file detected, trying alternate download URL..."
-    DOWNLOAD_URL="https://setup.rbxcdn.com/mac/RobloxPlayer.dmg"
-    rm -f "$DMG_PATH"
-    curl -L -o "$DMG_PATH" "$DOWNLOAD_URL" --progress-bar 2>&1
-    FILE_SIZE=$(wc -c < "$DMG_PATH" | tr -d ' ')
-    if [ "$FILE_SIZE" -gt 1000000 ]; then
-      success "Downloaded Roblox installer from CDN ($(echo "scale=1; $FILE_SIZE / 1048576" | bc) MB)"
-      add_result "${GREEN}✓${NC} Roblox Download: Success from CDN"
-    else
-      fail_soft "Downloaded file is too small ($FILE_SIZE bytes). Download may have failed."
-      add_result "${RED}✗${NC} Roblox Download: File too small"
-      
-      # Fallback: try to use brew cask
-      info "Attempting fallback installation via Homebrew..."
-      if command -v brew &> /dev/null; then
-        brew install --cask roblox 2>/dev/null && success "Installed Roblox via Homebrew" && add_result "${GREEN}✓${NC} Roblox: Installed via Homebrew"
-      fi
-    fi
-  fi
-else
-  fail_soft "Failed to download Roblox installer"
-  add_result "${RED}✗${NC} Roblox Download: Failed"
-fi
-
-
-# ═════════════════════════════════════════════════════════════════════
-# STEP 4: Install Fresh Roblox
+# STEP 3 & 4: Download and Install Fresh Roblox
 # ═════════════════════════════════════════════════════════════════════
 echo ""
-echo -e "  ${BLUE}${BOLD}[4/$TOTAL_STEPS]${NC} ${BOLD}Installing Fresh Roblox${NC}"
+echo -e "  ${BLUE}${BOLD}[3/$TOTAL_STEPS]${NC} ${BOLD}Installing Fresh Roblox${NC}"
 
 ROBLOX_INSTALLED=false
 
-if [ -f "$DMG_PATH" ]; then
-  FILE_SIZE=$(wc -c < "$DMG_PATH" | tr -d ' ')
-  if [ "$FILE_SIZE" -gt 1000000 ]; then
-    MOUNT_POINT="/tmp/roblox_mount_$$"
-    mkdir -p "$MOUNT_POINT"
-
-    info "Mounting DMG installer..."
-    if hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT_POINT" -nobrowse -quiet 2>/dev/null; then
-      
-      # Find Roblox.app inside the mounted DMG
-      ROBLOX_APP=""
-      if [ -d "$MOUNT_POINT/Roblox.app" ]; then
-        ROBLOX_APP="$MOUNT_POINT/Roblox.app"
-      elif [ -d "$MOUNT_POINT/RobloxPlayer.app" ]; then
-        ROBLOX_APP="$MOUNT_POINT/RobloxPlayer.app"
-      else
-        # Search for any .app inside the mount
-        ROBLOX_APP=$(find "$MOUNT_POINT" -maxdepth 2 -name "*.app" -type d | head -1)
-      fi
-
-      if [ -n "$ROBLOX_APP" ] && [ -d "$ROBLOX_APP" ]; then
-        APP_NAME=$(basename "$ROBLOX_APP")
-        info "Found $APP_NAME inside DMG, copying to /Applications..."
-        
-        # Check if it's an installer app (like RobloxPlayerInstaller.app)
-        if echo "$APP_NAME" | grep -qi "installer"; then
-          info "Detected Roblox installer app, running it..."
-          cp -R "$ROBLOX_APP" "/tmp/$APP_NAME" 2>/dev/null || sudo cp -R "$ROBLOX_APP" "/tmp/$APP_NAME"
-          open -W "/tmp/$APP_NAME" 2>/dev/null
-          sleep 5
-          rm -rf "/tmp/$APP_NAME" 2>/dev/null
-          
-          if [ -d "/Applications/Roblox.app" ]; then
-            ROBLOX_INSTALLED=true
-            success "Roblox installed via native installer to /Applications"
-          else
-            fail_soft "Installer ran but Roblox.app not found in /Applications"
-          fi
-        else
-          # Direct copy of .app bundle
-          if cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null; then
-            ROBLOX_INSTALLED=true
-            success "Installed Roblox.app to /Applications"
-          else
-            info "Trying with elevated permissions..."
-            if sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null; then
-              ROBLOX_INSTALLED=true
-              success "Installed Roblox.app to /Applications (sudo)"
-            else
-              fail_soft "Failed to copy Roblox.app to /Applications"
-            fi
-          fi
-        fi
-      else
-        info "No .app bundle found in DMG. Checking for pkg installer..."
-        PKG_FILE=$(find "$MOUNT_POINT" -maxdepth 2 -name "*.pkg" | head -1)
-        if [ -n "$PKG_FILE" ]; then
-          info "Running package installer..."
-          sudo installer -pkg "$PKG_FILE" -target / 2>/dev/null
-          if [ -d "/Applications/Roblox.app" ]; then
-            ROBLOX_INSTALLED=true
-            success "Roblox installed via .pkg"
-          fi
-        else
-          fail_soft "No installable content found in DMG"
-        fi
-      fi
-
-      # Unmount the DMG
-      hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null
-      rmdir "$MOUNT_POINT" 2>/dev/null
-    else
-      fail_soft "Failed to mount DMG file"
-    fi
-  fi
-fi
-
-# If DMG install failed, check if brew cask already installed it
-if [ "$ROBLOX_INSTALLED" = false ] && [ -d "/Applications/Roblox.app" ]; then
-  ROBLOX_INSTALLED=true
-  success "Roblox.app found in /Applications (installed via Homebrew or existing)"
-fi
-
-# If still not installed, try Homebrew cask as final fallback
-if [ "$ROBLOX_INSTALLED" = false ]; then
-  warn "DMG installation failed. Trying Homebrew cask as fallback..."
-  if command -v brew &> /dev/null; then
-    brew install --cask roblox 2>&1 | tail -3
+# Method 1 (Primary): Homebrew cask — most reliable on macOS
+if command -v brew &> /dev/null; then
+  info "Installing Roblox via Homebrew (paling reliable)..."
+  
+  # Uninstall old cask first if exists (silent)
+  brew uninstall --cask roblox 2>/dev/null || true
+  
+  # Install fresh with no quarantine flag (prevents Gatekeeper popups)
+  if brew install --cask --no-quarantine roblox 2>&1 | tail -5; then
     if [ -d "/Applications/Roblox.app" ]; then
       ROBLOX_INSTALLED=true
       success "Roblox installed via Homebrew cask"
@@ -312,15 +185,78 @@ if [ "$ROBLOX_INSTALLED" = false ]; then
   fi
 fi
 
+# Method 2 (Fallback): Direct download if Homebrew not available
+if [ "$ROBLOX_INSTALLED" = false ]; then
+  info "Homebrew not available, trying direct download..."
+  
+  DMG_PATH="/tmp/RobloxPlayer_$$.dmg"
+  rm -f "$DMG_PATH" 2>/dev/null
+  
+  # Try the Roblox CDN URL (follows redirects)
+  DOWNLOAD_URLS=(
+    "https://www.roblox.com/download/client"
+    "https://setup.rbxcdn.com/mac/RobloxPlayer.dmg"
+  )
+  
+  DOWNLOADED=false
+  for URL in "${DOWNLOAD_URLS[@]}"; do
+    info "Trying: $URL"
+    if curl -L -o "$DMG_PATH" "$URL" --connect-timeout 15 --max-time 120 -s 2>/dev/null; then
+      # Verify it's actually a DMG (check magic bytes)
+      if file "$DMG_PATH" 2>/dev/null | grep -qi "disk image\|dmg\|apple"; then
+        DOWNLOADED=true
+        FILE_SIZE=$(wc -c < "$DMG_PATH" | tr -d ' ')
+        success "Downloaded Roblox installer ($(echo "scale=1; $FILE_SIZE / 1048576" | bc) MB)"
+        break
+      fi
+    fi
+    rm -f "$DMG_PATH" 2>/dev/null
+  done
+  
+  if [ "$DOWNLOADED" = true ]; then
+    MOUNT_POINT="/tmp/roblox_mount_$$"
+    mkdir -p "$MOUNT_POINT"
+    
+    info "Mounting and installing..."
+    if hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT_POINT" -nobrowse -quiet 2>/dev/null; then
+      # Find any .app inside the mount
+      ROBLOX_APP=$(find "$MOUNT_POINT" -maxdepth 2 -name "*.app" -type d | head -1)
+      
+      if [ -n "$ROBLOX_APP" ]; then
+        APP_NAME=$(basename "$ROBLOX_APP")
+        
+        if echo "$APP_NAME" | grep -qi "installer"; then
+          # It's an installer app — run it
+          cp -R "$ROBLOX_APP" "/tmp/$APP_NAME" 2>/dev/null
+          open -W "/tmp/$APP_NAME" 2>/dev/null
+          sleep 3
+          rm -rf "/tmp/$APP_NAME" 2>/dev/null
+        else
+          # Direct .app bundle — copy to /Applications
+          cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null || sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null
+        fi
+        
+        if [ -d "/Applications/Roblox.app" ]; then
+          ROBLOX_INSTALLED=true
+          success "Roblox installed from DMG"
+        fi
+      fi
+      
+      hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null
+      rmdir "$MOUNT_POINT" 2>/dev/null
+    fi
+    rm -f "$DMG_PATH" 2>/dev/null
+  fi
+fi
+
 if [ "$ROBLOX_INSTALLED" = true ]; then
   add_result "${GREEN}✓${NC} Roblox Install: Fresh copy installed to /Applications"
 else
-  add_result "${YELLOW}⚠${NC} Roblox Install: Could not install automatically. Please install from roblox.com"
+  warn "Could not install Roblox automatically."
+  info "Please install manually from https://www.roblox.com/download"
+  info "Then re-run this script to apply injection patches."
+  add_result "${YELLOW}⚠${NC} Roblox Install: Manual install needed from roblox.com"
 fi
-
-# Cleanup DMG
-rm -f "$DMG_PATH" 2>/dev/null
-
 
 # ═════════════════════════════════════════════════════════════════════
 # STEP 5: Patch Roblox Bundle with Electron Executor Injection
