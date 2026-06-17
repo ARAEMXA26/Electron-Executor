@@ -182,23 +182,46 @@ cd "$INSTALL_DIR"
 info "Compiling production build..."
 npm run build 2>&1 | tail -3 || fail "Failed to compile production build."
 
-info "Packaging Electron app..."
-# Packages the app dynamically based on the current architecture
-npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist 2>&1 | tail -3 || fail "Failed to package Electron application."
-
-info "Installing to /Applications..."
-# Find the generated app path
-APP_PATH=$(find dist -maxdepth 2 -name "Electron Executor.app" | head -n 1)
-if [ -z "$APP_PATH" ]; then
-  fail "Failed to find compiled Electron Executor.app in dist/"
-fi
-
-# Copy to Applications folder (requires no sudo for user-writable Applications folder)
-if cp -R "$APP_PATH" "/Applications/" 2>/dev/null; then
-  success "Successfully installed to /Applications/Electron Executor.app"
+# Check if Opiumware.app template exists to copy and configure it (storage efficient)
+if [ -d "/Applications/Opiumware.app" ]; then
+  info "Configuring from Opiumware.app template..."
+  # Clean previous install
+  rm -rf "/Applications/Electron Executor.app"
+  
+  # Copy bundle template
+  cp -R "/Applications/Opiumware.app" "/Applications/Electron Executor.app"
+  
+  # Rename internal binary to Electron Executor
+  mv "/Applications/Electron Executor.app/Contents/MacOS/Opiumware" "/Applications/Electron Executor.app/Contents/MacOS/Electron Executor" 2>/dev/null || true
+  
+  # Update plist metadata definitions
+  plutil -replace CFBundleDisplayName -string "Electron Executor" "/Applications/Electron Executor.app/Contents/Info.plist" 2>/dev/null || true
+  plutil -replace CFBundleExecutable -string "Electron Executor" "/Applications/Electron Executor.app/Contents/Info.plist" 2>/dev/null || true
+  plutil -replace CFBundleName -string "Electron Executor" "/Applications/Electron Executor.app/Contents/Info.plist" 2>/dev/null || true
+  plutil -replace CFBundleIdentifier -string "com.ariardianto.electronexecutor" "/Applications/Electron Executor.app/Contents/Info.plist" 2>/dev/null || true
+  
+  # Ad-hoc sign to prevent OS crash on launch
+  codesign --force --deep --sign - "/Applications/Electron Executor.app" 2>/dev/null || true
+  success "Successfully configured from Opiumware.app template to /Applications/Electron Executor.app"
 else
-  warn "Failed to install directly to /Applications. Trying with sudo..."
-  sudo cp -R "$APP_PATH" "/Applications/" || fail "Could not install to /Applications. Please drag-and-drop the app manually from $INSTALL_DIR/$APP_PATH."
+  info "Packaging Electron app via electron-packager..."
+  # Packages the app dynamically based on the current architecture
+  npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist 2>&1 | tail -3 || fail "Failed to package Electron application."
+
+  info "Installing to /Applications..."
+  # Find the generated app path
+  APP_PATH=$(find dist -maxdepth 2 -name "Electron Executor.app" | head -n 1)
+  if [ -z "$APP_PATH" ]; then
+    fail "Failed to find compiled Electron Executor.app in dist/"
+  fi
+
+  # Copy to Applications folder (requires no sudo for user-writable Applications folder)
+  if cp -R "$APP_PATH" "/Applications/" 2>/dev/null; then
+    success "Successfully installed to /Applications/Electron Executor.app"
+  else
+    warn "Failed to install directly to /Applications. Trying with sudo..."
+    sudo cp -R "$APP_PATH" "/Applications/" || fail "Could not install to /Applications. Please drag-and-drop the app manually from $INSTALL_DIR/$APP_PATH."
+  fi
 fi
 
 # ── Step 6: Auto-setup Roblox ────────────────────────────────────────
