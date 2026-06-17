@@ -1,6 +1,23 @@
-# Electron Executor 🚀
+# Electron Executor ⚡
 
 Premium, secure, and next-generation Roblox script executor built on **Next.js 16**, **Electron**, and **PostgreSQL**. Features lightning-fast startup splash loading screens, dynamic process detection, local script management, and local/cloud synchronization capabilities.
+
+---
+
+## ⚡ Quick Install (One Command)
+
+Open **Terminal** and paste this:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/ARAEMXA26/Electron-Executor/main/install.sh | bash
+```
+
+This will automatically:
+- ✅ Install Homebrew & Node.js (if missing)
+- ✅ Clone the repository
+- ✅ Install all dependencies
+- ✅ Auto-patch Roblox folders (plugins, settings, autoexec)
+- ✅ Launch the application
 
 ---
 
@@ -10,6 +27,7 @@ Premium, secure, and next-generation Roblox script executor built on **Next.js 1
 - **Mac-Style Inset Context Menus**: Beautiful right-click tab context menus matching macOS styling guidelines.
 - **Built-in Lua Engine Simulator**: Run scripts locally using the simulator even when Roblox isn't connected.
 - **Roblox Studio Integration**: Automated copying of Roblox connection hooks to Studio plugins and Autoexec exploit folders on boot.
+- **Auto Roblox Patching**: Automatically creates `ClientAppSettings.json` to enable HTTP connections between the executor and Roblox.
 - **Robust Database Sync**: Syncs local scripts and profile metrics automatically to a PostgreSQL database.
 - **Secure Email OTP Authentication**: Register and login securely using numeric 6-digit verification codes.
 
@@ -27,12 +45,15 @@ Premium, secure, and next-generation Roblox script executor built on **Next.js 1
 ## ⚙️ Prerequisites
 
 Before installing the project, make sure you have:
-1. **Node.js** (v18 or higher recommended)
-2. **PostgreSQL** running locally
+1. **macOS** (Apple Silicon or Intel)
+2. **Node.js** (v18 or higher recommended) — auto-installed by the installer
+3. **PostgreSQL** running locally (optional, for cloud sync features)
 
 ---
 
-## 📦 Installation & Setup
+## 📦 Manual Installation & Setup
+
+If you prefer manual setup over the one-command installer:
 
 1. **Clone the repository**:
    ```bash
@@ -45,13 +66,31 @@ Before installing the project, make sure you have:
    npm install
    ```
 
-3. **Configure Database**:
-   The application auto-connects to a local PostgreSQL instance. If the database role `postgres` is missing, the application attempts fallback connections to empty-password configurations and active system users.
+3. **Setup Roblox integration** (auto-patches all folders):
+   ```bash
+   chmod +x setup-roblox.sh && ./setup-roblox.sh
+   ```
 
 4. **Launch development server**:
    ```bash
    npm run dev
    ```
+
+---
+
+## 🔧 Roblox Setup (Re-run Anytime)
+
+If Roblox updates and breaks the executor connection, simply re-run:
+
+```bash
+./setup-roblox.sh
+```
+
+This script will:
+- Copy `ElectronLoader.lua` to Roblox Studio Plugins
+- Create autoexec files for macOS exploit clients (MacSploit, Hydrogen, Wave, etc.)
+- Create `ClientAppSettings.json` with HTTP flags enabled
+- Verify all file placements
 
 ---
 
@@ -61,6 +100,18 @@ Before installing the project, make sure you have:
 2. Sign up or log in. Ethereal developer OTP logs will be visible in the console if Ethereal SMTP is used.
 3. Open a `.lua` or `.txt` file, or create a new tab.
 4. Execute scripts into active Roblox instances or run them in the simulator!
+
+---
+
+## 🔧 Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Executor can't connect to Roblox | Run `./setup-roblox.sh` to re-patch all folders |
+| Port 8392 already in use | Run `lsof -ti :8392 \| xargs kill -9` |
+| Roblox Studio: HTTP error | Enable in Studio: `Game Settings → Security → Allow HTTP Requests` |
+| Node.js not found | Install via `brew install node` |
+| After Roblox update, loader broken | Run `./setup-roblox.sh` — it re-copies everything |
 
 ---
 

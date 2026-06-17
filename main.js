@@ -13,41 +13,93 @@ let serverInstance = null;
 const isDev = !app.isPackaged || process.env.NODE_ENV === 'development';
 
 // Function to copy loader.lua automatically to Roblox plugin folders
+// and patch Roblox ClientSettings for seamless HTTP connections.
 function installRobloxHook() {
-  try {
-    const homeDir = os.homedir();
-    const loaderPath = path.join(__dirname, 'loader.lua');
-    if (!fs.existsSync(loaderPath)) {
-      console.log('[Hook] loader.lua not found, skipping hook install');
-      return;
-    }
+  const homeDir = os.homedir();
+  const loaderPath = path.join(__dirname, 'loader.lua');
 
-    const loaderContent = fs.readFileSync(loaderPath, 'utf8');
-
-    // 1. Roblox Studio Plugins Folder
-    const studioPluginsDir = path.join(homeDir, 'Library', 'Application Support', 'Roblox', 'Plugins');
-    fs.mkdirSync(studioPluginsDir, { recursive: true });
-    fs.writeFileSync(path.join(studioPluginsDir, 'ElectronLoader.lua'), loaderContent);
-    console.log('[Hook] Successfully copied loader.lua to Roblox Studio Plugins');
-
-    // 2. Typical exploit autoexec folders (MacSploit, Hydrogen, Wave)
-    const exploitPaths = [
-      path.join(homeDir, 'Library', 'Application Support', 'MacSploit', 'autoexec'),
-      path.join(homeDir, 'Library', 'Application Support', 'Hydrogen', 'autoexec'),
-      path.join(homeDir, 'Library', 'Application Support', 'Wave', 'autoexec')
-    ];
-
-    exploitPaths.forEach(dir => {
-      // Check if parent directory exists (which means the exploit is installed)
-      if (fs.existsSync(path.dirname(dir))) {
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, 'ElectronLoader.lua'), loaderContent);
-        console.log(`[Hook] Successfully copied loader.lua to autoexec: ${dir}`);
-      }
-    });
-  } catch (err) {
-    console.error('[Hook Error] Failed to install Roblox hooks:', err);
+  if (!fs.existsSync(loaderPath)) {
+    console.log('[Hook] loader.lua not found, skipping hook install');
+    return;
   }
+
+  const loaderContent = fs.readFileSync(loaderPath, 'utf8');
+  let successCount = 0;
+  let failCount = 0;
+
+  // Helper: safely write file and verify
+  function safeWrite(filePath, content, label) {
+    try {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, content);
+      // Verify write
+      if (fs.existsSync(filePath)) {
+        const written = fs.readFileSync(filePath, 'utf8');
+        if (written.length > 0) {
+          console.log(`[Hook ✓] ${label}`);
+          successCount++;
+          return true;
+        }
+      }
+      console.warn(`[Hook ⚠] ${label} — file written but verification failed`);
+      failCount++;
+      return false;
+    } catch (err) {
+      console.warn(`[Hook ✗] ${label} — ${err.message}`);
+      failCount++;
+      return false;
+    }
+  }
+
+  // ── 1. Roblox Studio Plugins Folder ────────────────────────────
+  const studioPluginsDir = path.join(homeDir, 'Library', 'Application Support', 'Roblox', 'Plugins');
+  safeWrite(
+    path.join(studioPluginsDir, 'ElectronLoader.lua'),
+    loaderContent,
+    'Copied loader.lua → Roblox Studio Plugins'
+  );
+
+  // ── 2. Exploit autoexec folders ────────────────────────────────
+  const exploitNames = ['MacSploit', 'Hydrogen', 'Wave', 'Xeno', 'Arceus-X'];
+  exploitNames.forEach(name => {
+    const parentDir = path.join(homeDir, 'Library', 'Application Support', name);
+    if (fs.existsSync(parentDir)) {
+      const autoexecDir = path.join(parentDir, 'autoexec');
+      safeWrite(
+        path.join(autoexecDir, 'ElectronLoader.lua'),
+        loaderContent,
+        `Copied loader.lua → ${name}/autoexec`
+      );
+    }
+  });
+
+  // ── 3. Roblox Player ClientSettings (enable HTTP flags) ────────
+  const clientSettingsJson = JSON.stringify({
+    FFlagDebugLocalRccServerConnection: 'true',
+    FIntHttpRequestFrequencyLimitPerMinute: '1000',
+    DFIntHttpRbxApiMaxRetryCount: '3',
+    FFlagEnableHttpServiceAutoRetry: 'true'
+  }, null, 2);
+
+  // 3a. Inside Roblox.app bundle
+  const robloxAppClientSettings = '/Applications/Roblox.app/Contents/MacOS/ClientSettings';
+  if (fs.existsSync('/Applications/Roblox.app')) {
+    safeWrite(
+      path.join(robloxAppClientSettings, 'ClientAppSettings.json'),
+      clientSettingsJson,
+      'Created ClientAppSettings.json in Roblox.app'
+    );
+  }
+
+  // 3b. User-level Application Support
+  const userClientSettings = path.join(homeDir, 'Library', 'Application Support', 'Roblox', 'ClientSettings');
+  safeWrite(
+    path.join(userClientSettings, 'ClientAppSettings.json'),
+    clientSettingsJson,
+    'Created ClientAppSettings.json in ~/Library (user-level)'
+  );
+
+  console.log(`[Hook] Setup complete: ${successCount} succeeded, ${failCount} failed`);
 }
 
 function createWindow() {
