@@ -73,7 +73,6 @@ export default function MainPage() {
   const [activeConsolePane, setActiveConsolePane] = useState('console'); // 'console' | 'terminal' | 'rconsole' | 'problems'
 
   // Roblox / Executor State
-  const [isAttached, setIsAttached] = useState(false);
   const [robloxProcess, setRobloxProcess] = useState({ running: false, type: null });
   const [connectionStatus, setConnectionStatus] = useState({ connected: false, clients: 0 });
   const [activeGame, setActiveGame] = useState({ placeId: null, gameName: null, jobId: null, executor: null });
@@ -407,6 +406,17 @@ export default function MainPage() {
     const tab = tabs.find(t => t.id === tabId);
     if (!tab) return;
 
+    // Verify connection hook status if Roblox is active
+    if (robloxProcess.running && !connectionStatus.connected) {
+      appendLog("Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.", 'roblox-error', 'console');
+      setToast({
+        show: true,
+        message: "Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.",
+        type: 'error'
+      });
+      return;
+    }
+
     // Check script compatibility (only when a specific game is active)
     const placeIdMatch = tab.content.match(/--\s*@placeid\s*(\d+)/i);
     if (placeIdMatch && activeGame.placeId) {
@@ -492,6 +502,17 @@ export default function MainPage() {
     const activeTab = tabs.find(t => t.id === activeTabId);
     if (!activeTab) return;
 
+    // Verify connection hook status if Roblox is active
+    if (robloxProcess.running && !connectionStatus.connected) {
+      appendLog("Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.", 'roblox-error', 'console');
+      setToast({
+        show: true,
+        message: "Roblox process is active, but connection hook is not running! Injeksi via Opiumware/Hydrogen terlebih dahulu.",
+        type: 'error'
+      });
+      return;
+    }
+
     // Check script compatibility (only when a specific game is active)
     const placeIdMatch = activeTab.content.match(/--\s*@placeid\s*(\d+)/i);
     if (placeIdMatch && activeGame.placeId) {
@@ -539,13 +560,41 @@ export default function MainPage() {
     }
   };
 
-  const handleToggleAttach = () => {
-    if (!isAttached) {
-      setIsAttached(true);
-      appendLog('Executor attached. Listening for Roblox clients...', 'info-log', 'console');
-    } else {
-      setIsAttached(false);
-      appendLog('Executor detached.', 'system-log', 'console');
+  const handleToggleAttach = async () => {
+    if (!window.electronAPI || !window.electronAPI.attachExecutor) return;
+    
+    appendLog('Mengaktifkan hook executor...', 'info-log', 'console');
+    setToast({
+      show: true,
+      message: 'Menghubungkan executor ke file Roblox...',
+      type: 'info'
+    });
+
+    try {
+      const res = await window.electronAPI.attachExecutor();
+      if (res && res.success) {
+        appendLog('Biner executor sukses di-hook! Silakan jalankan Roblox Anda.', 'success-log', 'console');
+        setToast({
+          show: true,
+          message: 'Executor hooked successfully! Silakan jalankan Roblox.',
+          type: 'success'
+        });
+      } else {
+        const errMsg = res?.error || 'Gagal menyalin biner';
+        appendLog(`Gagal memasang hook executor: ${errMsg}`, 'roblox-error', 'console');
+        setToast({
+          show: true,
+          message: `Gagal: ${errMsg}`,
+          type: 'error'
+        });
+      }
+    } catch (err) {
+      appendLog(`Error ketika mengaktifkan hook: ${err.message}`, 'roblox-error', 'console');
+      setToast({
+        show: true,
+        message: `Error: ${err.message}`,
+        type: 'error'
+      });
     }
   };
 
@@ -712,7 +761,7 @@ export default function MainPage() {
                     <Toolbar
                       onExecute={handleExecute}
                       onOpenFile={handleOpenFile}
-                      isAttached={isAttached}
+                      isAttached={connectionStatus.connected}
                       onToggleAttach={handleToggleAttach}
                       onLaunchRoblox={handleLaunchRoblox}
                       robloxProcess={robloxProcess}

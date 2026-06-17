@@ -8,6 +8,28 @@ const db = require('./db');
 
 let scriptQueue = []; // Queue for HTTP polling (multiple scripts support)
 let wsClients = new Set();
+let lastPollTime = 0;
+let isPollingClientConnected = false;
+
+// Polling timeout checker (runs every 1 second)
+setInterval(() => {
+  if (lastPollTime > 0 && (Date.now() - lastPollTime) > 3000) {
+    // Polling client disconnected!
+    lastPollTime = 0;
+    isPollingClientConnected = false;
+    
+    // Check if WebSocket is also disconnected before clearing active game info
+    if (wsClients.size === 0) {
+      activeGameInfo = { placeId: null, gameName: null, jobId: null, executor: null };
+      
+      if (mainProcessSendCallback) {
+        mainProcessSendCallback('status', { connected: false, clients: 0 });
+        mainProcessSendCallback('log', 'Roblox client disconnected (polling timed out)');
+        mainProcessSendCallback('roblox-handshake', activeGameInfo);
+      }
+    }
+  }
+}, 1000);
 
 function runAutoexecScripts(wsClient = null) {
   try {
@@ -146,6 +168,18 @@ function startServer(port = 8392, onLogCallback = null) {
 
   // Endpoint for Roblox HTTP polling loader
   app.get('/poll', (req, res) => {
+    lastPollTime = Date.now();
+    
+    if (!isPollingClientConnected) {
+      isPollingClientConnected = true;
+      if (wsClients.size === 0) {
+        if (mainProcessSendCallback) {
+          mainProcessSendCallback('status', { connected: true, clients: 1 });
+          mainProcessSendCallback('log', 'Roblox client connected via HTTP Polling');
+        }
+      }
+    }
+
     if (scriptQueue.length > 0) {
       const script = scriptQueue.shift();
       console.log('[Server] Script polled and delivered to Roblox');
@@ -276,7 +310,8 @@ function startServer(port = 8392, onLogCallback = null) {
 }
 
 function hasConnectedClients() {
-  return wsClients.size > 0 || (activeGameInfo && activeGameInfo.placeId !== null);
+  const isPollingActive = lastPollTime > 0 && (Date.now() - lastPollTime) < 3000;
+  return wsClients.size > 0 || isPollingActive;
 }
 
 function getActiveGameInfo() {

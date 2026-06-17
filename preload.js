@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Roblox Detection and Launching
   detectRoblox: () => ipcRenderer.invoke('detect-roblox'),
   launchRoblox: () => ipcRenderer.invoke('launch-roblox'),
+  attachExecutor: () => ipcRenderer.invoke('attach-executor'),
   getRobloxProcess: () => ipcRenderer.invoke('get-roblox-process'),
   onRobloxProcessStatus: (callback) => ipcRenderer.on('roblox-process-status', (event, value) => callback(value)),
   onRobloxHandshake: (callback) => ipcRenderer.on('roblox-handshake', (event, value) => callback(value)),

@@ -551,6 +551,15 @@ ipcMain.handle('launch-roblox', async () => {
   }
 });
 
+ipcMain.handle('attach-executor', async () => {
+  try {
+    installRobloxHook();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 // IPC handlers for custom window controls
 ipcMain.on('window-close', () => {
   if (mainWindow) mainWindow.close();
