@@ -128,12 +128,114 @@ local function sendHandshake()
     httpPost(baseUrl .. "/handshake", payload)
 end
 
--- Execute source code safely
+-- Execute source code safely with custom wrapped environment and exploit API mocks
 local function executeSource(sourceCode, sourceName, sourceId)
     sendAppLog("Executing script payload: " .. (sourceName or "unnamed.lua"), "info", sourceName, sourceId)
     
     local func, err = loadstring(sourceCode)
     if func then
+        -- 1. Create a custom environment table
+        local env = {}
+        
+        -- 2. Proxy for game / Game (enables HttpGet and HttpPost in Roblox Studio via HttpService)
+        local proxiedGame = setmetatable({}, {
+            __index = function(t, k)
+                if k == "HttpGet" or k == "httpGet" then
+                    return function(self, url)
+                        local success, res = pcall(function()
+                            return HttpService:GetAsync(url)
+                        end)
+                        return success and res or ""
+                    end
+                elseif k == "HttpPost" or k == "httpPost" then
+                    return function(self, url, body, contentType)
+                        local success, res = pcall(function()
+                            return HttpService:PostAsync(url, body, contentType)
+                        end)
+                        return success and res or ""
+                    end
+                else
+                    local val = game[k]
+                    if typeof(val) == "function" then
+                        return function(self, ...)
+                            return val(game, ...)
+                        end
+                    end
+                    return val
+                end
+            end,
+            __newindex = function(t, k, v)
+                game[k] = v
+            end
+        })
+
+        -- 3. Populate environment with exploit API mocks
+        env = setmetatable({
+            game = proxiedGame,
+            Game = proxiedGame,
+            
+            -- Exploit global environment mocks
+            getgenv = function() return env end,
+            getrenv = function() return env end,
+            getreg = function() return {} end,
+            getgc = function() return {} end,
+            getinstances = function() return game:GetDescendants() end,
+            getnilinstances = function() return {} end,
+            
+            getrawmetatable = function(t) return getmetatable(t) end,
+            setrawmetatable = function(t, mt) return true end,
+            setreadonly = function(t, r) return true end,
+            isreadonly = function(t) return false end,
+            hookmetamethod = function(t, method, func)
+                local mt = getmetatable(t)
+                if mt then
+                    local old = mt[method]
+                    mt[method] = func
+                    return old
+                end
+            end,
+            hookfunction = function(f, hook) return f end,
+            newcclosure = function(f) return f end,
+            iscclosure = function(f) return false end,
+            islclosure = function(f) return true end,
+            identifyexecutor = function() return "Electron Executor", "v1.0" end,
+            getexecutorname = function() return "Electron Executor" end,
+            
+            -- Http request compatibility
+            request = function(options)
+                local url = options.Url or options.url
+                local method = options.Method or options.method or "GET"
+                local body = options.Body or options.body
+                if method == "GET" then
+                    local success, res = pcall(function() return HttpService:GetAsync(url) end)
+                    return { Success = success, StatusCode = success and 200 or 500, Body = res }
+                else
+                    local success, res = pcall(function() return HttpService:PostAsync(url, body) end)
+                    return { Success = success, StatusCode = success and 200 or 500, Body = res }
+                end
+            end,
+            http_request = function(options) return env.request(options) end,
+            http = { request = function(options) return env.request(options) end }
+        }, {
+            -- Fallback to the main environment
+            __index = function(t, k)
+                if k == "HttpGet" then
+                    return function(self, url)
+                        local success, res = pcall(function() return HttpService:GetAsync(url) end)
+                        return success and res or ""
+                    end
+                end
+                return getfenv()[k]
+            end,
+            __newindex = function(t, k, v)
+                getfenv()[k] = v
+            end
+        })
+        
+        -- 4. Apply environment
+        setfenv(func, env)
+
+        -- 5. Spawn function
         local execSuccess, execErr = pcall(function()
             task.spawn(func)
         end)

@@ -363,10 +363,52 @@ async function executeLua(scriptContent, scriptName, gameInfo, logCallback) {
     lua.global.set('Workspace', workspaceMock);
 
     // ---------------------------------------------------------------
+    // Setup standard exploit functions directly in JS environment
+    // ---------------------------------------------------------------
+    lua.global.set('identifyexecutor', () => ['Electron Executor Simulator', 'v1.0.0']);
+    lua.global.set('getexecutorname', () => 'Electron Executor Simulator');
+    
+    // safe request library mock
+    const requestHandler = (options) => {
+      const url = options?.Url || options?.url;
+      const method = options?.Method || options?.method || 'GET';
+      const body = options?.Body || options?.body || '';
+      const headers = options?.Headers || options?.headers || {};
+      
+      try {
+        let responseText = '';
+        if (method.toUpperCase() === 'POST') {
+          responseText = httpPostSync(url, body, headers['Content-Type']);
+        } else {
+          responseText = httpGetSync(url);
+        }
+        return {
+          StatusCode: 200,
+          StatusMessage: 'OK',
+          Headers: {},
+          Body: responseText
+        };
+      } catch (err) {
+        return {
+          StatusCode: 500,
+          StatusMessage: err.message,
+          Headers: {},
+          Body: ''
+        };
+      }
+    };
+    
+    lua.global.set('request', requestHandler);
+    lua.global.set('http_request', requestHandler);
+
+    // ---------------------------------------------------------------
     // Inject Compatibility Layer in Lua Environment
     // ---------------------------------------------------------------
     await lua.doString(`
       loadstring = load
+      
+      -- Exploit environment mocks
+      local env_storage = {}
       
       function getgenv()
         return _G
@@ -376,6 +418,109 @@ async function executeLua(scriptContent, scriptName, gameInfo, logCallback) {
         return _G
       end
       
+      function getrenv()
+        return _G
+      end
+      
+      function getreg()
+        return env_storage
+      end
+      
+      function getgc()
+        return {}
+      end
+      
+      function getinstances()
+        return {}
+      end
+      
+      function getnilinstances()
+        return {}
+      end
+      
+      -- Metatable/hook mocks
+      local metatables = {}
+      
+      function getrawmetatable(tbl)
+        if not metatables[tbl] then
+          metatables[tbl] = {}
+        end
+        return metatables[tbl]
+      end
+      
+      function setrawmetatable(tbl, mt)
+        metatables[tbl] = mt
+        return true
+      end
+      
+      function setreadonly(tbl, readonly)
+        return true
+      end
+      
+      function isreadonly(tbl)
+        return false
+      end
+      
+      function hookmetamethod(tbl, method, new_func)
+        return new_func
+      end
+      
+      function hookfunction(old_func, new_func)
+        return new_func
+      end
+      
+      -- Http request libraries
+      http = {
+        request = request
+      }
+      
+      syn = {
+        request = request,
+        toast_notification = function(options)
+          print("[Notification] " .. tostring(options.Title) .. ": " .. tostring(options.Content))
+        end
+      }
+      
+      -- File system mocks
+      local virtual_files = {}
+      
+      function readfile(filename)
+        return virtual_files[filename] or ""
+      end
+      
+      function writefile(filename, content)
+        virtual_files[filename] = content
+      end
+      
+      function appendfile(filename, content)
+        virtual_files[filename] = (virtual_files[filename] or "") .. content
+      end
+      
+      function isfile(filename)
+        return virtual_files[filename] ~= nil
+      end
+      
+      function listfiles()
+        local files = {}
+        for k, _ in pairs(virtual_files) do
+          table.insert(files, k)
+        end
+        return files
+      end
+      
+      function makefolder(foldername)
+        return true
+      end
+      
+      function delfolder(foldername)
+        return true
+      end
+      
+      function delfile(filename)
+        virtual_files[filename] = nil
+      end
+      
+      -- Execution & Wait Mocks
       function wait(seconds)
         return __js_wait(seconds):await()
       end
