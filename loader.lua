@@ -9,8 +9,8 @@ local RunService = game:GetService("RunService")
 local MarketplaceService = game:GetService("MarketplaceService")
 
 local runPort = 8392
-local baseUrl = "http://localhost:" .. tostring(runPort)
-local wsUrl = "ws://localhost:" .. tostring(runPort)
+local baseUrl = "http://127.0.0.1:" .. tostring(runPort)
+local wsUrl = "ws://127.0.0.1:" .. tostring(runPort)
 
 -- Safe extraction of game information
 local placeId = game.PlaceId
