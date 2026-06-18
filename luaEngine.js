@@ -107,7 +107,7 @@ const METHOD_NAMES = new Set([
 // JS Proxy generator that mocks any un-implemented properties as sub-mocks, 
 // and any un-implemented methods as callable functions that return new mocks.
 function createSafeMock(name = 'mock', overrides = {}) {
-  const target = { ...overrides };
+  const target = { _mockName: name, ...overrides };
 
   return new Proxy(target, {
     get(t, prop, receiver) {
@@ -206,6 +206,12 @@ async function executeLua(scriptContent, scriptName, gameInfo, logCallback) {
           log(`[task.delay] Error: ${err.message}`, 'error');
         }
       }, ms);
+    });
+
+    // Register JS-side fallback call handler for Proxy objects
+    lua.global.set('__js_call_mock', (targetObj, ...args) => {
+      const name = targetObj?._mockName || 'mock';
+      return createSafeMock(`${name}()`);
     });
 
     // ---------------------------------------------------------------
@@ -362,6 +368,43 @@ async function executeLua(scriptContent, scriptName, gameInfo, logCallback) {
     lua.global.set('workspace', workspaceMock);
     lua.global.set('Workspace', workspaceMock);
 
+    // tick() helper using JS Date for sub-millisecond precision
+    lua.global.set('tick', () => Date.now() / 1000);
+
+    // Clipboard handlers utilizing Electron or fallback memory
+    const setClipboardHandler = (text) => {
+      try {
+        const { clipboard } = require('electron');
+        if (clipboard && typeof clipboard.writeText === 'function') {
+          clipboard.writeText(String(text));
+          return true;
+        }
+      } catch (err) {
+        log(`[Clipboard] Warning writing to clipboard: ${err.message}`, 'warn');
+      }
+      global.__mock_clipboard = String(text);
+      return true;
+    };
+
+    const getClipboardHandler = () => {
+      try {
+        const { clipboard } = require('electron');
+        if (clipboard && typeof clipboard.readText === 'function') {
+          return clipboard.readText();
+        }
+      } catch (err) {
+        // ignore
+      }
+      return global.__mock_clipboard || "";
+    };
+
+    lua.global.set('setclipboard', setClipboardHandler);
+    lua.global.set('set_clipboard', setClipboardHandler);
+    lua.global.set('writeclipboard', setClipboardHandler);
+    lua.global.set('write_clipboard', setClipboardHandler);
+    lua.global.set('toclipboard', setClipboardHandler);
+    lua.global.set('getclipboard', getClipboardHandler);
+
     // ---------------------------------------------------------------
     // Setup standard exploit functions directly in JS environment
     // ---------------------------------------------------------------
@@ -407,17 +450,277 @@ async function executeLua(scriptContent, scriptName, gameInfo, logCallback) {
     await lua.doString(`
       loadstring = load
       
+      -- Custom setfenv implementation for Lua 5.4 compatibility
+      function setfenv(f, env)
+        if type(f) == "function" then
+          local i = 1
+          while true do
+            local name = debug.getupvalue(f, i)
+            if not name then break end
+            if name == "_ENV" then
+              debug.setupvalue(f, i, env)
+              break
+            end
+            i = i + 1
+          end
+        end
+        return f
+      end
+
+      function getfenv(f)
+        if type(f) == "function" then
+          local i = 1
+          while true do
+            local name, val = debug.getupvalue(f, i)
+            if not name then break end
+            if name == "_ENV" then
+              return val
+            end
+            i = i + 1
+          end
+        end
+        return _G
+      end
+
+      -- Custom cloneref
+      function cloneref(ref)
+        return ref
+      end
+
+      -- Custom math.round
+      math.round = function(x)
+        if x >= 0 then
+          return math.floor(x + 0.5)
+        else
+          return math.ceil(x - 0.5)
+        end
+      end
+
+      -- Custom Instance mock
+      local function luaSafeMock(name)
+        local mock = {}
+        setmetatable(mock, {
+          __index = function(t, k)
+            if k == "Parent" then return nil end
+            if k == "Name" then return name end
+            return luaSafeMock(name .. "." .. tostring(k))
+          end,
+          __newindex = function(t, k, v)
+            -- ignore
+          end,
+          __call = function(t, ...)
+            return luaSafeMock(name .. "()")
+          end
+        })
+        return mock
+      end
+
+      Instance = {
+        new = function(className, parent)
+          return luaSafeMock(className)
+        end
+      }
+
+      -- Roblox Enums Mock
+      Enum = luaSafeMock("Enum")
+
+      -- Roblox Datatypes Mocks
+      Vector2 = {
+        new = function(x, y)
+          local v = luaSafeMock("Vector2")
+          v.X = x or 0
+          v.Y = y or 0
+          return v
+        end
+      }
+
+      Vector3 = {
+        new = function(x, y, z)
+          local v = luaSafeMock("Vector3")
+          v.X = x or 0
+          v.Y = y or 0
+          v.Z = z or 0
+          return v
+        end
+      }
+
+      CFrame = {
+        new = function(...)
+          return luaSafeMock("CFrame")
+        end
+      }
+
+      Color3 = {
+        new = function(r, g, b)
+          local c = luaSafeMock("Color3")
+          c.R = r or 0
+          c.G = g or 0
+          c.B = b or 0
+          return c
+        end,
+        fromRGB = function(r, g, b)
+          return Color3.new((r or 0)/255, (g or 0)/255, (b or 0)/255)
+        end,
+        fromHex = function(hex)
+          return Color3.new(0, 0, 0)
+        end
+      }
+
+      UDim2 = {
+        new = function(...)
+          return luaSafeMock("UDim2")
+        end,
+        fromScale = function(...)
+          return luaSafeMock("UDim2")
+        end,
+        fromOffset = function(...)
+          return luaSafeMock("UDim2")
+        end
+      }
+
+      UDim = {
+        new = function(...)
+          return luaSafeMock("UDim")
+        end
+      }
+
+      TweenInfo = {
+        new = function(...)
+          return luaSafeMock("TweenInfo")
+        end
+      }
+
+      -- Custom bit32 library for Lua 5.4 compatibility
+      local bit32 = {}
+
+      function bit32.band(a, b, ...)
+        local res = a & b
+        for _, v in ipairs({...}) do
+          res = res & v
+        end
+        return res
+      end
+
+      function bit32.bor(a, b, ...)
+        local res = a | b
+        for _, v in ipairs({...}) do
+          res = res | v
+        end
+        return res
+      end
+
+      function bit32.bxor(a, b, ...)
+        local res = a ~ b
+        for _, v in ipairs({...}) do
+          res = res ~ v
+        end
+        return res
+      end
+
+      function bit32.bnot(a)
+        return ~a
+      end
+
+      function bit32.lshift(a, b)
+        return a << b
+      end
+
+      function bit32.rshift(a, b)
+        local mask = 0xFFFFFFFF
+        a = a & mask
+        b = b & 31
+        return (a >> b) & mask
+      end
+
+      function bit32.arshift(a, b)
+        local mask = 0xFFFFFFFF
+        a = a & mask
+        b = b & 31
+        if (a & 0x80000000) ~= 0 then
+          return ((a >> b) | (0xFFFFFFFF << (32 - b))) & mask
+        else
+          return (a >> b) & mask
+        end
+      end
+
+      function bit32.lrotate(x, disp)
+        disp = disp & 31
+        if disp == 0 then return x & 0xFFFFFFFF end
+        x = x & 0xFFFFFFFF
+        return ((x << disp) | (x >> (32 - disp))) & 0xFFFFFFFF
+      end
+
+      function bit32.rrotate(x, disp)
+        disp = disp & 31
+        if disp == 0 then return x & 0xFFFFFFFF end
+        x = x & 0xFFFFFFFF
+        return ((x >> disp) | (x << (32 - disp))) & 0xFFFFFFFF
+      end
+
+      function bit32.extract(x, field, width)
+        width = width or 1
+        local mask = (1 << width) - 1
+        return (x >> field) & mask
+      end
+
+      function bit32.replace(x, v, field, width)
+        width = width or 1
+        local mask = ((1 << width) - 1) << field
+        return (x & ~mask) | ((v << field) & mask)
+      end
+
+      function bit32.btest(a, b, ...)
+        return bit32.band(a, b, ...) ~= 0
+      end
+
+      _G.bit32 = bit32
+
+      -- Custom bit library
+      local bit = {}
+      for k, v in pairs(bit32) do
+        bit[k] = v
+      end
+      bit.rol = bit32.lrotate
+      bit.ror = bit32.rrotate
+      function bit.tobit(x)
+        x = x & 0xFFFFFFFF
+        if x >= 0x80000000 then
+          return x - 0x100000000
+        end
+        return x
+      end
+      function bit.tohex(x, n)
+        n = n or 8
+        local fmt
+        if n < 0 then
+          fmt = "%" .. string.format("%02X", -n) .. "x"
+        else
+          fmt = "%0" .. string.format("%d", n) .. "x"
+        end
+        return string.format(fmt, x & 0xFFFFFFFF)
+      end
+      function bit.bswap(x)
+        x = x & 0xFFFFFFFF
+        local b1 = x & 0xFF
+        local b2 = (x >> 8) & 0xFF
+        local b3 = (x >> 16) & 0xFF
+        local b4 = (x >> 24) & 0xFF
+        return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4
+      end
+
+      _G.bit = bit
+
       -- Exploit environment mocks
       local env_storage = {}
       
       function getgenv()
         return _G
       end
-      
+
       function getfenv(fn)
-        return _G
+        return getfenv(fn)
       end
-      
+
       function getrenv()
         return _G
       end
@@ -551,6 +854,14 @@ async function executeLua(scriptContent, scriptName, gameInfo, logCallback) {
       function delay(seconds, func, ...)
         task.delay(seconds, func, ...)
       end
+
+      -- Override js_proxy __call metamethod to support calling arbitrary methods on mocked objects
+      local registry = debug.getregistry()
+      if registry and registry["js_proxy"] then
+        registry["js_proxy"].__call = function(self, ...)
+          return __js_call_mock(self, ...)
+        end
+      end
     `);
 
     // ---------------------------------------------------------------
@@ -562,6 +873,7 @@ async function executeLua(scriptContent, scriptName, gameInfo, logCallback) {
     return { success: true };
 
   } catch (err) {
+    console.error("JS Error Stack:", err.stack || err);
     const errorMsg = err.message || String(err);
     log(`[Built-in Lua] Error: ${errorMsg}`, 'error');
     return { success: false, error: errorMsg };
