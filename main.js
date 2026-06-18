@@ -163,6 +163,59 @@ function getRobloxLogsDir() {
 function fetchGameNameFromPlaceId(placeId) {
   return new Promise((resolve) => {
     const https = require('https');
+    
+    // Use roproxy.com first to bypass ISP blocks in regions like Indonesia
+    const universeUrl = `https://apis.roproxy.com/universes/v1/places/${placeId}/universe`;
+    
+    https.get(universeUrl, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const universeId = json.universeId;
+          if (!universeId) {
+            // Try official Roblox API as fallback
+            fetchGameNameOfficial(placeId).then(resolve);
+            return;
+          }
+          
+          const gamesUrl = `https://games.roproxy.com/v1/games?universeIds=${universeId}`;
+          https.get(gamesUrl, (res2) => {
+            let data2 = '';
+            res2.on('data', chunk => data2 += chunk);
+            res2.on('end', () => {
+              try {
+                const json2 = JSON.parse(data2);
+                if (json2.data && json2.data.length > 0) {
+                  resolve(json2.data[0].name || 'Roblox Game');
+                } else {
+                  resolve('Roblox Game');
+                }
+              } catch (e) {
+                resolve('Roblox Game');
+              }
+            });
+          }).on('error', () => {
+            // Try official Roblox API as fallback
+            fetchGameNameOfficial(placeId).then(resolve);
+          });
+        } catch (e) {
+          // Try official Roblox API as fallback
+          fetchGameNameOfficial(placeId).then(resolve);
+        }
+      });
+    }).on('error', () => {
+      // Try official Roblox API as fallback
+      fetchGameNameOfficial(placeId).then(resolve);
+    });
+  });
+}
+
+// Fallback lookup function using official Roblox API endpoints
+function fetchGameNameOfficial(placeId) {
+  return new Promise((resolve) => {
+    const https = require('https');
     const universeUrl = `https://apis.roblox.com/universes/v1/places/${placeId}/universe`;
     
     https.get(universeUrl, (res) => {
