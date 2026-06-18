@@ -515,7 +515,7 @@ ipcMain.on('execute-script', async (event, { scriptContent, scriptName }) => {
     const postData = JSON.stringify({ scriptContent, scriptName });
 
     const req = http.request({
-      hostname: 'localhost',
+      hostname: '127.0.0.1',
       port: 8392,
       path: '/execute',
       method: 'POST',
