@@ -7,8 +7,8 @@ import { motion } from 'framer-motion';
 export default function Toolbar({ 
   onExecute, 
   onOpenFile, 
-  isAttached, 
-  onToggleAttach, 
+  isAutoexec, 
+  onToggleAutoexec, 
   onLaunchRoblox,
   robloxProcess
 }) {
@@ -38,27 +38,27 @@ export default function Toolbar({
         <FolderOpen size={14} />
       </motion.button>
 
-      {/* Attach/Inject Button */}
+      {/* Auto Execute (Zap) Toggle Button */}
       <motion.button
         whileHover={{ scale: 1.05, translateY: -1 }}
         whileTap={{ scale: 0.95 }}
-        onClick={onToggleAttach}
-        animate={isAttached ? {
+        onClick={onToggleAutoexec}
+        animate={isAutoexec ? {
           boxShadow: [
-            "0 0 2px rgba(16, 185, 129, 0.2)",
-            "0 0 8px rgba(16, 185, 129, 0.4)",
-            "0 0 2px rgba(16, 185, 129, 0.2)"
+            "0 0 2px rgba(234, 179, 8, 0.2)",
+            "0 0 8px rgba(234, 179, 8, 0.5)",
+            "0 0 2px rgba(234, 179, 8, 0.2)"
           ]
         } : {}}
         transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-        className={`w-8 h-8 rounded-md border border-border-color bg-white/[0.01] flex justify-center items-center cursor-pointer transition-colors duration-150 ${
-          isAttached 
-            ? 'text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/10' 
-            : 'text-accent-yellow hover:bg-accent-yellow/10 hover:border-accent-yellow/25'
+        className={`w-8 h-8 rounded-md border flex justify-center items-center cursor-pointer transition-colors duration-150 ${
+          isAutoexec 
+            ? 'text-accent-yellow border-accent-yellow/30 bg-accent-yellow/10' 
+            : 'text-text-muted border-border-color bg-white/[0.01] hover:text-text-secondary hover:bg-white/[0.04]'
         }`}
-        title={isAttached ? "Executor Attached" : "Attach Executor"}
+        title={isAutoexec ? "Auto Execute: ENABLED (Runs automatically on game load)" : "Enable Auto Execute (Run automatically on game load)"}
       >
-        <Zap size={14} fill={isAttached ? "currentColor" : "none"} />
+        <Zap size={14} fill={isAutoexec ? "currentColor" : "none"} />
       </motion.button>
 
       {/* Roblox Launch / Status Button */}

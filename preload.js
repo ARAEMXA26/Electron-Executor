@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   dbStatus: () => ipcRenderer.invoke('db-status'),
   dbGetLinkedUser: () => ipcRenderer.invoke('db-get-linked-user'),
   dbUnlinkDevice: () => ipcRenderer.invoke('db-unlink-device'),
+  dbIsAutoexec: (fileName) => ipcRenderer.invoke('db-is-autoexec', fileName),
+  dbToggleAutoexec: (fileName, content, enabled) => ipcRenderer.invoke('db-toggle-autoexec', { fileName, content, enabled }),
   
   // Local script storage handlers
   getLocalScripts: () => ipcRenderer.invoke('get-local-scripts'),

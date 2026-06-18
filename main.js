@@ -887,6 +887,12 @@ function renameLocalScript(oldName, newName) {
   try {
     if (fs.existsSync(oldPath)) {
       fs.renameSync(oldPath, newPath);
+      // Also update autoexec file if it exists
+      const oldAutoexecPath = path.join(os.homedir(), 'Electron Executor', 'autoexec', oldName);
+      const newAutoexecPath = path.join(os.homedir(), 'Electron Executor', 'autoexec', newName);
+      if (fs.existsSync(oldAutoexecPath)) {
+        fs.renameSync(oldAutoexecPath, newAutoexecPath);
+      }
       return { success: true, path: newPath };
     }
     return { success: false, error: 'Original file not found' };
@@ -902,11 +908,46 @@ function deleteLocalScript(fileName) {
   try {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
+      // Also clean up autoexec if the deleted script was marked for autoexec
+      const autoexecPath = path.join(os.homedir(), 'Electron Executor', 'autoexec', fileName);
+      if (fs.existsSync(autoexecPath)) {
+        fs.unlinkSync(autoexecPath);
+      }
       return { success: true };
     }
     return { success: false, error: 'File not found' };
   } catch (err) {
     console.error('[Scripts] Failed to delete script:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// Autoexec helper functions
+function checkIsAutoexec(fileName) {
+  const autoexecPath = path.join(os.homedir(), 'Electron Executor', 'autoexec', fileName);
+  return fs.existsSync(autoexecPath);
+}
+
+function setAutoexecStatus(fileName, content, enabled) {
+  const autoexecDir = path.join(os.homedir(), 'Electron Executor', 'autoexec');
+  if (!fs.existsSync(autoexecDir)) {
+    fs.mkdirSync(autoexecDir, { recursive: true });
+  }
+  const autoexecPath = path.join(autoexecDir, fileName);
+
+  try {
+    if (enabled) {
+      fs.writeFileSync(autoexecPath, content, 'utf8');
+      console.log(`[Autoexec] Marked script for auto-execution: ${fileName}`);
+    } else {
+      if (fs.existsSync(autoexecPath)) {
+        fs.unlinkSync(autoexecPath);
+        console.log(`[Autoexec] Unmarked script from auto-execution: ${fileName}`);
+      }
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[Autoexec] Failed to toggle autoexec:', err.message);
     return { success: false, error: err.message };
   }
 }
@@ -926,6 +967,14 @@ ipcMain.handle('rename-local-script', (event, { oldName, newName }) => {
 
 ipcMain.handle('delete-local-script', (event, { fileName }) => {
   return deleteLocalScript(fileName);
+});
+
+ipcMain.handle('db-is-autoexec', (event, fileName) => {
+  return checkIsAutoexec(fileName);
+});
+
+ipcMain.handle('db-toggle-autoexec', (event, { fileName, content, enabled }) => {
+  return setAutoexecStatus(fileName, content, enabled);
 });
 
 ipcMain.handle('db-get-linked-user', async () => {

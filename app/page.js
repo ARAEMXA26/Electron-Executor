@@ -220,20 +220,26 @@ export default function MainPage() {
 
     // Load local scripts from Documents folder on startup
     if (window.electronAPI.getLocalScripts) {
-      window.electronAPI.getLocalScripts().then(localScripts => {
+      window.electronAPI.getLocalScripts().then(async (localScripts) => {
         if (localScripts && localScripts.length > 0) {
-          const loadedTabs = localScripts.map((s, index) => ({
-            id: index + 1,
-            name: s.name,
-            content: s.content,
-            path: s.path,
-            unsaved: false
-          }));
+          const loadedTabs = [];
+          for (let i = 0; i < localScripts.length; i++) {
+            const s = localScripts[i];
+            const autoexec = window.electronAPI.dbIsAutoexec ? await window.electronAPI.dbIsAutoexec(s.name) : false;
+            loadedTabs.push({
+              id: i + 1,
+              name: s.name,
+              content: s.content,
+              path: s.path,
+              unsaved: false,
+              autoexec
+            });
+          }
           setTabs(loadedTabs);
           setActiveTabId(loadedTabs[0].id);
           setNextTabId(loadedTabs.length + 1);
         } else {
-          const defaultTab = { id: 1, name: 'Untitled-1.lua', content: '-- Untitled 1\n', path: null, unsaved: false };
+          const defaultTab = { id: 1, name: 'Untitled-1.lua', content: '-- Untitled 1\n', path: null, unsaved: false, autoexec: false };
           setTabs([defaultTab]);
           setActiveTabId(1);
           setNextTabId(2);
@@ -489,7 +495,8 @@ export default function MainPage() {
     if (window.electronAPI.renameLocalScript) {
       const res = await window.electronAPI.renameLocalScript(oldName, formattedName);
       if (res.success) {
-        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, name: formattedName, unsaved: false } : t));
+        const isAuto = window.electronAPI.dbIsAutoexec ? await window.electronAPI.dbIsAutoexec(formattedName) : false;
+        setTabs(prev => prev.map(t => t.id === tabId ? { ...t, name: formattedName, unsaved: false, autoexec: isAuto } : t));
       } else {
         alert(`Failed to rename script file: ${res.error}`);
       }
@@ -572,39 +579,35 @@ export default function MainPage() {
     }
   };
 
-  const handleToggleAttach = async () => {
-    if (!window.electronAPI || !window.electronAPI.attachExecutor) return;
+  const handleToggleAutoexec = async () => {
+    if (!window.electronAPI || !window.electronAPI.dbToggleAutoexec) return;
     
-    appendLog('Mengaktifkan hook executor...', 'info-log', 'console');
-    setToast({
-      show: true,
-      message: 'Menghubungkan executor ke file Roblox...',
-      type: 'info'
-    });
+    const activeTab = tabs.find(t => t.id === activeTabId);
+    if (!activeTab) return;
 
-    try {
-      const res = await window.electronAPI.attachExecutor();
-      if (res && res.success) {
-        appendLog('Biner executor sukses di-hook! Silakan jalankan Roblox Anda.', 'success-log', 'console');
-        setToast({
-          show: true,
-          message: 'Executor hooked successfully! Silakan jalankan Roblox.',
-          type: 'success'
-        });
-      } else {
-        const errMsg = res?.error || 'Gagal menyalin biner';
-        appendLog(`Gagal memasang hook executor: ${errMsg}`, 'roblox-error', 'console');
-        setToast({
-          show: true,
-          message: `Gagal: ${errMsg}`,
-          type: 'error'
-        });
-      }
-    } catch (err) {
-      appendLog(`Error ketika mengaktifkan hook: ${err.message}`, 'roblox-error', 'console');
+    const currentAutoexec = !!activeTab.autoexec;
+    const nextAutoexec = !currentAutoexec;
+
+    const res = await window.electronAPI.dbToggleAutoexec(activeTab.name, activeTab.content, nextAutoexec);
+    if (res.success) {
+      setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, autoexec: nextAutoexec } : t));
       setToast({
         show: true,
-        message: `Error: ${err.message}`,
+        message: nextAutoexec 
+          ? `Script "${activeTab.name}" set to Auto Execute!` 
+          : `Removed "${activeTab.name}" from Auto Execute.`,
+        type: nextAutoexec ? 'success' : 'info'
+      });
+      appendLog(
+        nextAutoexec 
+          ? `Script "${activeTab.name}" marked for automatic execution.` 
+          : `Script "${activeTab.name}" unmarked from automatic execution.`,
+        'success-log'
+      );
+    } else {
+      setToast({
+        show: true,
+        message: `Failed to toggle autoexec: ${res.error}`,
         type: 'error'
       });
     }
@@ -773,8 +776,8 @@ export default function MainPage() {
                     <Toolbar
                       onExecute={handleExecute}
                       onOpenFile={handleOpenFile}
-                      isAttached={connectionStatus.connected}
-                      onToggleAttach={handleToggleAttach}
+                      isAutoexec={activeTab?.autoexec}
+                      onToggleAutoexec={handleToggleAutoexec}
                       onLaunchRoblox={handleLaunchRoblox}
                       robloxProcess={robloxProcess}
                     />
