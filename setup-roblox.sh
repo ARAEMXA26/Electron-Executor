@@ -75,11 +75,21 @@ add_result() { RESULTS+=("$1"); }
 # Total steps
 TOTAL_STEPS=7
 
+print_step() {
+  local num="$1"
+  local title="$2"
+  echo ""
+  if [ "$FROM_INSTALLER" = true ]; then
+    echo -e "  ${BLUE}${BOLD}[6.${num}]${NC} ${BOLD}${title}${NC}"
+  else
+    echo -e "  ${BLUE}${BOLD}[${num}/${TOTAL_STEPS}]${NC} ${BOLD}${title}${NC}"
+  fi
+}
+
 # ═════════════════════════════════════════════════════════════════════
 # STEP 0: Create Electron Executor User Workspace
 # ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[0/$TOTAL_STEPS]${NC} ${BOLD}Electron Executor Workspace Directory${NC}"
+print_step 0 "Electron Executor Workspace Directory"
 
 ELECTRON_DIR="$HOME/Electron Executor"
 mkdir -p "$ELECTRON_DIR"
@@ -96,8 +106,7 @@ add_result "${GREEN}✓${NC} Workspace: Initialized at ~/Electron Executor"
 # ═════════════════════════════════════════════════════════════════════
 # STEP 1: Kill Running Roblox Processes
 # ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[1/$TOTAL_STEPS]${NC} ${BOLD}Terminating Running Roblox Processes${NC}"
+print_step 1 "Terminating Running Roblox Processes"
 
 KILLED=0
 for PROC_NAME in "RobloxPlayer" "Roblox" "RobloxStudio" "RobloxPlayerInstaller" "RobloxCrashHandler"; do
@@ -122,8 +131,7 @@ sleep 1
 # ═════════════════════════════════════════════════════════════════════
 # STEP 2: Remove Old Roblox Installation
 # ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[2/$TOTAL_STEPS]${NC} ${BOLD}Removing Old Roblox Installation${NC}"
+print_step 2 "Removing Old Roblox Installation"
 
 REMOVED=0
 
@@ -167,8 +175,7 @@ add_result "${GREEN}✓${NC} Old Roblox: Removed ($REMOVED app bundles cleaned)"
 # ═════════════════════════════════════════════════════════════════════
 # STEP 3 & 4: Download and Install Fresh Roblox (Official CDN Method)
 # ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[3/$TOTAL_STEPS]${NC} ${BOLD}Installing Fresh Roblox${NC}"
+print_step 3 "Installing Fresh Roblox"
 
 ROBLOX_INSTALLED=false
 ARCH=$(uname -m)
@@ -317,8 +324,7 @@ add_result "${GREEN}✓${NC} Roblox Install: Fresh copy installed ($MAC_TYPE)"
 # ═════════════════════════════════════════════════════════════════════
 # STEP 5: Patch Roblox Bundle with Electron Executor Injection
 # ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[5/$TOTAL_STEPS]${NC} ${BOLD}Patching Roblox with Electron Executor Injection${NC}"
+print_step 4 "Patching Roblox with Electron Executor Injection"
 
 # ClientAppSettings JSON — enables HTTP requests to localhost
 CLIENT_SETTINGS_JSON='{
@@ -395,8 +401,7 @@ add_result "${GREEN}✓${NC} Roblox Injection: $PATCH_COUNT patches applied"
 # ═════════════════════════════════════════════════════════════════════
 # STEP 6: Copy loader.lua to Roblox Studio Plugins
 # ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[6/$TOTAL_STEPS]${NC} ${BOLD}Roblox Studio Plugin Integration${NC}"
+print_step 5 "Roblox Studio Plugin Integration"
 
 STUDIO_PLUGINS_DIR="$HOME/Library/Application Support/Roblox/Plugins"
 mkdir -p "$STUDIO_PLUGINS_DIR" 2>/dev/null
@@ -413,8 +418,7 @@ fi
 # ═════════════════════════════════════════════════════════════════════
 # STEP 7: Verification
 # ═════════════════════════════════════════════════════════════════════
-echo ""
-echo -e "  ${BLUE}${BOLD}[7/$TOTAL_STEPS]${NC} ${BOLD}Verification${NC}"
+print_step 6 "Verification"
 
 VERIFY_PASS=0
 VERIFY_FAIL=0
