@@ -152,6 +152,12 @@ fi
 step 3 "Downloading Electron Executor..."
 
 # Deleting old Electron Executor installations to ensure a fresh clean reinstall
+if pgrep -f "Electron Executor" >/dev/null 2>&1; then
+  info "Terminating running Electron Executor instances..."
+  pkill -f "Electron Executor" 2>/dev/null || true
+  sleep 1
+fi
+
 if [ -d "/Applications/Electron Executor.app" ]; then
   info "Removing old Electron Executor application..."
   rm -rf "/Applications/Electron Executor.app" 2>/dev/null || true
