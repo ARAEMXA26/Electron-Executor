@@ -183,37 +183,46 @@ else
   MAC_TYPE="x86_64"
 fi
 
-# Step A: Fetch latest version hash from official Roblox API
-info "Fetching latest Roblox version from official API..."
-VERSION_JSON=$(curl -sS -A "$UA" \
-  "https://clientsettings.roblox.com/v2/client-version/MacPlayer" \
-  --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 2 2>/dev/null) || VERSION_JSON=""
+# Step A: Fetch latest version hash from Homebrew Cask API (which is not blocked) or Roblox API
+info "Fetching latest Roblox version hash..."
+VERSION_JSON=$(curl -sS --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 2 \
+  "https://formulae.brew.sh/api/cask/roblox.json" 2>/dev/null) || VERSION_JSON=""
 
 VERSION_HASH=""
 if [ -n "$VERSION_JSON" ]; then
-  # Extract clientVersionUpload (e.g., "version-d9748b94acff4b5d")
-  VERSION_HASH=$(echo "$VERSION_JSON" | grep -oE '"clientVersionUpload"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"clientVersionUpload"\s*:\s*"\([^"]*\)".*/\1/')
+  # Extract version hash from Homebrew API response (e.g. "version":"0.726.0.7261140,d9748b94acff4b5d")
+  VERSION_HASH=$(echo "$VERSION_JSON" | grep -oE '"version"\s*:\s*"[^"]+"' | head -1 | cut -d',' -f2 | tr -d '"')
+fi
+
+# Fallback: Try official API if Homebrew API failed
+if [ -z "$VERSION_HASH" ]; then
+  info "Homebrew API unavailable, trying official API..."
+  VERSION_JSON=$(curl -sS -A "$UA" \
+    "https://clientsettings.roblox.com/v2/client-version/MacPlayer" \
+    --connect-timeout 15 --max-time 30 --retry 3 --retry-delay 2 2>/dev/null) || VERSION_JSON=""
+
+  if [ -n "$VERSION_JSON" ]; then
+    VERSION_HASH=$(echo "$VERSION_JSON" | grep -oE '"clientVersionUpload"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"clientVersionUpload"\s*:\s*"\([^"]*\)".*/\1/')
+  fi
 fi
 
 if [ -z "$VERSION_HASH" ]; then
-  echo -e "  ${RED}${BOLD}  ✗ Failed to fetch Roblox version from API.${NC}"
-  echo -e "  ${RED}    Error: Connection reset or network blocking detected.${NC}"
-  echo -e "  ${YELLOW}    IMPORTANT: Your ISP/network is blocking Roblox servers.${NC}"
-  echo -e "    Please enable a VPN (e.g., Cloudflare WARP) and try again."
+  echo -e "  ${RED}${BOLD}  ✗ Failed to fetch Roblox version hash.${NC}"
+  echo -e "  ${RED}    Error: Network connectivity issue or API format changed.${NC}"
   echo -e "  ${YELLOW}    Retry: ${CYAN}./setup-roblox.sh${NC}"
   exit 1
 fi
 
-success "Latest Roblox version: $VERSION_HASH"
+success "Latest Roblox version hash: $VERSION_HASH"
 
-# Step B: Build architecture-specific download URL
+# Step B: Build architecture-specific download URL (using HTTP to bypass SNI filters)
 DOWNLOAD_FILE="/tmp/RobloxPlayer_$$.zip"
 rm -f "$DOWNLOAD_FILE" 2>/dev/null
 
 if [ "$MAC_TYPE" = "arm64" ]; then
-  DOWNLOAD_URL="https://setup.rbxcdn.com/mac/arm64/version-${VERSION_HASH}-RobloxPlayer.zip"
+  DOWNLOAD_URL="http://setup.rbxcdn.com/mac/arm64/version-${VERSION_HASH}-RobloxPlayer.zip"
 else
-  DOWNLOAD_URL="https://setup.rbxcdn.com/mac/version-${VERSION_HASH}-RobloxPlayer.zip"
+  DOWNLOAD_URL="http://setup.rbxcdn.com/mac/version-${VERSION_HASH}-RobloxPlayer.zip"
 fi
 
 info "Downloading: $DOWNLOAD_URL"
@@ -230,9 +239,7 @@ HTTP_CODE=$(curl -L -A "$UA" \
 if [ "$HTTP_CODE" != "200" ] || [ ! -f "$DOWNLOAD_FILE" ]; then
   rm -f "$DOWNLOAD_FILE" 2>/dev/null
   echo -e "  ${RED}${BOLD}  ✗ Download failed (HTTP $HTTP_CODE).${NC}"
-  echo -e "  ${RED}    Error: Connection reset or network blocking detected.${NC}"
-  echo -e "  ${YELLOW}    IMPORTANT: Your ISP/network is blocking Roblox CDN.${NC}"
-  echo -e "    Please enable a VPN (e.g., Cloudflare WARP) and try again."
+  echo -e "  ${RED}    Please check your internet connection and try again.${NC}"
   echo -e "  ${YELLOW}    Retry: ${CYAN}./setup-roblox.sh${NC}"
   exit 1
 fi
@@ -241,7 +248,6 @@ FILE_BYTES=$(wc -c < "$DOWNLOAD_FILE" | tr -d ' ')
 if [ "$FILE_BYTES" -lt 10485760 ]; then # Must be at least 10MB to be valid
   rm -f "$DOWNLOAD_FILE" 2>/dev/null
   echo -e "  ${RED}${BOLD}  ✗ Downloaded file is too small or invalid (${FILE_BYTES} bytes).${NC}"
-  echo -e "  ${YELLOW}    IMPORTANT: Please enable a VPN (e.g., Cloudflare WARP) and try again.${NC}"
   exit 1
 fi
 
