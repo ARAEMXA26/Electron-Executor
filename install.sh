@@ -234,6 +234,18 @@ info "Applying ad-hoc signature..."
 codesign --force --deep --sign - "/Applications/Electron Executor.app" 2>/dev/null || true
 success "Codesign complete"
 
+# Clean up build directories immediately so macOS Spotlight/Launchpad don't index duplicate .app bundles
+info "Cleaning up temporary build outputs..."
+rm -rf "$INSTALL_DIR/dist" 2>/dev/null || true
+rm -rf "$(pwd)/dist" 2>/dev/null || true
+success "Temporary build outputs removed"
+
+# Refresh Launchpad to clear duplicate icons
+info "Refreshing macOS Launchpad database..."
+defaults write com.apple.dock ResetLaunchPad -bool true
+killall Dock 2>/dev/null || true
+success "Launchpad database refreshed"
+
 
 # ── Step 6: Auto-setup Roblox ────────────────────────────────────────
 step 6 "Setting up Roblox integration..."
