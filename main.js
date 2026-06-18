@@ -255,6 +255,19 @@ function fetchGameNameOfficial(placeId) {
   });
 }
 
+async function syncActiveGameToDbAndUi(gameInfo) {
+  try {
+    const deviceId = db.getDeviceId();
+    await db.updateDeviceActiveGame(deviceId, gameInfo?.placeId, gameInfo?.gameName);
+  } catch (dbErr) {
+    console.error('[DB Sync Error] Failed to update active game in DB:', dbErr.message);
+  }
+  
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('roblox-handshake', gameInfo);
+  }
+}
+
 async function checkRobloxActiveGame() {
   try {
     const logsDir = getRobloxLogsDir();
@@ -356,9 +369,7 @@ async function checkRobloxActiveGame() {
         const { setActiveGameInfo } = require('./server');
         setActiveGameInfo(gameInfoPayload);
 
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('roblox-handshake', gameInfoPayload);
-        }
+        await syncActiveGameToDbAndUi(gameInfoPayload);
       }
     }
   } catch (err) {
@@ -394,7 +405,7 @@ app.whenReady().then(() => {
       } else if (type === 'status') {
         mainWindow.webContents.send('client-status', data);
       } else if (type === 'roblox-handshake') {
-        mainWindow.webContents.send('roblox-handshake', data);
+        syncActiveGameToDbAndUi(data);
       }
     }
   });
@@ -427,8 +438,8 @@ app.whenReady().then(() => {
         }
       });
     } else {
-      // macOS process detection via pgrep
-      exec('pgrep -x "RobloxPlayer"', (err, stdout) => {
+      // macOS process detection via pgrep (checking both RobloxPlayer and Roblox executable names)
+      exec('pgrep -x "RobloxPlayer" || pgrep -x "Roblox"', (err, stdout) => {
         const isRunning = !!stdout.trim();
         if (isRunning) {
           updateRunningState(true, 'Roblox Client');
@@ -454,6 +465,10 @@ app.whenReady().then(() => {
         currentDetectedGameName = null;
         const { setActiveGameInfo } = require('./server');
         setActiveGameInfo(null);
+        
+        // Clear active game in DB when process closes
+        const clearPayload = { placeId: null, gameName: null, jobId: null, executor: null };
+        syncActiveGameToDbAndUi(clearPayload);
       }
     }
   }
@@ -778,8 +793,8 @@ ipcMain.handle('db-get-scripts', async (event, userId) => {
   return await db.getScripts(userId);
 });
 
-ipcMain.handle('db-get-stats', async () => {
-  return await db.getDeviceStats();
+ipcMain.handle('db-get-stats', async (event, userId) => {
+  return await db.getDeviceStats(userId);
 });
 
 ipcMain.handle('db-get-device-id', () => {

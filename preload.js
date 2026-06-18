@@ -21,7 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   dbLoadConfig: () => ipcRenderer.invoke('db-load-config'),
   dbSaveScript: (params) => ipcRenderer.invoke('db-save-script', params),
   dbGetScripts: (userId) => ipcRenderer.invoke('db-get-scripts', userId),
-  dbGetStats: () => ipcRenderer.invoke('db-get-stats'),
+  dbGetStats: (userId) => ipcRenderer.invoke('db-get-stats', userId),
   dbGetDeviceId: () => ipcRenderer.invoke('db-get-device-id'),
   dbStatus: () => ipcRenderer.invoke('db-status'),
   dbGetLinkedUser: () => ipcRenderer.invoke('db-get-linked-user'),

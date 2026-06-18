@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Shield, HardDrive, LayoutGrid, CheckCircle2, XCircle, LogOut } from 'lucide-react';
+import { Shield, HardDrive, LayoutGrid, CheckCircle2, XCircle, LogOut, Laptop, Monitor, Gamepad2, RefreshCw } from 'lucide-react';
 
 export default function SettingsPanel({ 
   deviceId, 
@@ -12,6 +12,7 @@ export default function SettingsPanel({
   onLogout
 }) {
   const [platformName, setPlatformName] = React.useState('macOS');
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -20,6 +21,12 @@ export default function SettingsPanel({
     }
   }, []);
 
+  const triggerRefreshAnimation = () => {
+    setIsRefreshing(true);
+    setTimeout(() => setIsRefreshing(false), 800);
+  };
+
+  // Find current device stats
   const myStats = stats?.find(s => s.device_id === deviceId) || {
     total_synced_scripts: 0,
     total_executions: 0,
@@ -29,11 +36,20 @@ export default function SettingsPanel({
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-bg-primary font-sans animate-fade-in-up">
       {/* Settings Header bar */}
-      <div className="h-[42px] bg-bg-header border-b border-border-color flex items-center px-4 shrink-0">
+      <div className="h-[42px] bg-bg-header border-b border-border-color flex items-center justify-between px-4 shrink-0">
         <h3 className="text-[11px] font-bold tracking-wider text-text-primary flex items-center gap-2">
           <Shield size={14} className="text-accent-blue" />
           SYSTEM SETTINGS & CLOUD SYNC
         </h3>
+        {dbConnected && (
+          <button 
+            onClick={triggerRefreshAnimation}
+            className="text-text-muted hover:text-text-primary p-1 rounded hover:bg-white/5 transition-colors cursor-pointer"
+            title="Refresh statistics"
+          >
+            <RefreshCw size={14} className={`${isRefreshing ? 'animate-spin text-accent-blue' : ''}`} />
+          </button>
+        )}
       </div>
 
       {/* Settings Body */}
@@ -47,7 +63,7 @@ export default function SettingsPanel({
             <div>
               <div className="text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
                 <HardDrive size={12} className="text-accent-blue" />
-                Device Information
+                Current Device Info
               </div>
               <h4 className="text-[15px] font-bold text-text-primary truncate mb-1">
                 {deviceName || 'Device Client'}
@@ -119,32 +135,108 @@ export default function SettingsPanel({
           </div>
         </div>
 
-        {/* Section 3: Sync Statistics */}
+        {/* Section 3: Device Cloud Network (Requirement #8 + Real-time Active Game Detection) */}
         <div className="bg-[#090d14] border border-border-color rounded-xl p-6 shadow-lg flex flex-col gap-4">
           <h4 className="text-[11px] font-bold text-text-primary tracking-wider uppercase flex items-center gap-1.5">
             <LayoutGrid size={13} className="text-accent-yellow" />
-            Synchronized Cloud Statistics
+            Device Cloud Sync Network
           </h4>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-[#05070a] border border-border-color rounded-lg p-5 text-center relative overflow-hidden group">
-              <div className="absolute top-0 left-0 w-full h-[2px] bg-accent-blue" />
-              <div className="text-[9px] text-text-secondary uppercase tracking-wider mb-1">Total Synced Scripts</div>
-              <div className="text-2xl font-bold text-accent-blue">{myStats.total_synced_scripts || 0}</div>
-            </div>
-            <div className="bg-[#05070a] border border-border-color rounded-lg p-5 text-center relative overflow-hidden group">
-              <div className="absolute top-0 left-0 w-full h-[2px] bg-accent-yellow" />
-              <div className="text-[9px] text-text-secondary uppercase tracking-wider mb-1">Total Executions</div>
-              <div className="text-2xl font-bold text-accent-yellow">{myStats.total_executions || 0}</div>
-            </div>
-          </div>
+          {dbConnected ? (
+            <div className="flex flex-col gap-3">
+              {stats && stats.length > 0 ? (
+                stats.map((device, index) => {
+                  const isCurrent = device.device_id === deviceId;
+                  const isWindows = String(device.os_platform).toLowerCase().includes('win');
+                  const isPlaying = !!device.active_game_name;
+                  
+                  return (
+                    <div 
+                      key={device.device_id || index}
+                      className={`border rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${
+                        isCurrent 
+                          ? 'bg-accent-blue/5 border-accent-blue/30 shadow-[0_0_15px_rgba(59,130,246,0.05)]' 
+                          : 'bg-[#05070a] border-border-color/60 hover:border-border-color hover:bg-white/[0.01]'
+                      }`}
+                    >
+                      {/* Left Side: Device Icon and Name */}
+                      <div className="flex items-start gap-3.5">
+                        <div className={`p-2.5 rounded-lg shrink-0 ${isCurrent ? 'bg-accent-blue/15 text-accent-blue' : 'bg-white/5 text-text-secondary'}`}>
+                          {isWindows ? <Monitor size={18} /> : <Laptop size={18} />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-[13px] text-text-primary truncate">
+                              {device.device_name}
+                            </span>
+                            {isCurrent && (
+                              <span className="text-[8px] bg-accent-blue/20 text-accent-blue font-extrabold uppercase px-1.5 py-0.5 rounded tracking-wide">
+                                This Device
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-text-muted font-mono mt-0.5 truncate max-w-[280px]">
+                            ID: {device.device_id}
+                          </p>
+                        </div>
+                      </div>
 
-          <div className="bg-[#05070a] border border-border-color rounded-lg p-3.5 flex justify-between items-center text-[10px] mt-2">
-            <span className="text-text-secondary font-medium">Last Synced Timestamp:</span>
-            <span className="font-mono text-text-primary">
-              {myStats.last_sync_at ? new Date(myStats.last_sync_at).toLocaleString() : 'Never'}
-            </span>
-          </div>
+                      {/* Middle Side: Active Roblox Game Play Status */}
+                      <div className="flex items-center gap-2 bg-white/[0.02] border border-border-color/30 rounded-lg px-3 py-2 shrink-0 md:max-w-[280px] w-full md:w-auto">
+                        <div className="relative flex h-2.5 w-2.5 shrink-0">
+                          {isPlaying && (
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          )}
+                          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isPlaying ? 'bg-emerald-500' : 'bg-white/10'}`}></span>
+                        </div>
+                        <div className="min-w-0">
+                          {isPlaying ? (
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wide flex items-center gap-1">
+                                <Gamepad2 size={10} /> Playing Roblox
+                              </span>
+                              <span className="text-[11px] font-bold text-text-primary truncate" title={device.active_game_name}>
+                                {device.active_game_name}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-text-muted font-medium">Offline / Idle</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Side: Sync Stats */}
+                      <div className="flex items-center gap-4 shrink-0 justify-between md:justify-end border-t md:border-t-0 border-border-color/30 pt-3.5 md:pt-0">
+                        <div className="text-right">
+                          <div className="text-[8px] text-text-muted uppercase tracking-wider">Synced Scripts</div>
+                          <div className="text-[13px] font-bold text-text-primary">{device.total_synced_scripts || 0}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[8px] text-text-muted uppercase tracking-wider">Runs</div>
+                          <div className="text-[13px] font-bold text-text-primary">{device.total_executions || 0}</div>
+                        </div>
+                        <div className="text-right pl-2 border-l border-border-color/30 min-w-[100px]">
+                          <div className="text-[8px] text-text-muted uppercase tracking-wider">Last Sync</div>
+                          <div className="text-[10px] font-mono text-text-secondary mt-0.5">
+                            {device.last_sync_at ? new Date(device.last_sync_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'Never'}
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-center py-6 text-text-muted text-[11px] border border-dashed border-border-color rounded-xl">
+                  No devices registered in cloud network.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-text-muted text-[11px] border border-dashed border-border-color rounded-xl bg-white/[0.01]">
+              Database offline. Connect to PostgreSQL to enable Cloud Device Network.
+            </div>
+          )}
         </div>
 
       </div>

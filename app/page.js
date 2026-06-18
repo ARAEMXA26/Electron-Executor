@@ -129,7 +129,7 @@ export default function MainPage() {
       setDeviceId(devId);
       setDeviceName(`Active platform: ${navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? 'macOS' : 'Windows'}`);
       
-      const statistics = await window.electronAPI.dbGetStats();
+      const statistics = await window.electronAPI.dbGetStats(currentUser?.id || null);
       if (statistics) setStats(statistics);
 
       // Auto login check if DB is connected and no active user session loaded yet
@@ -194,7 +194,7 @@ export default function MainPage() {
     appendLog(`Synced ${syncCount} scripts to PostgreSQL.`, 'success-log');
     
     // Refresh stats
-    const statistics = await window.electronAPI.dbGetStats();
+    const statistics = await window.electronAPI.dbGetStats(userId);
     if (statistics) setStats(statistics);
   };
 
@@ -283,7 +283,7 @@ export default function MainPage() {
         } else {
           appendLog(`Roblox executor hooked successfully in game "${gameInfo.gameName}" (Place ID: ${gameInfo.placeId}) via ${gameInfo.executor}!`, 'success-log', 'console');
           // Auto refresh stats
-          window.electronAPI.dbGetStats().then(statistics => {
+          window.electronAPI.dbGetStats(currentUser?.id).then(statistics => {
             if (statistics) setStats(statistics);
           });
         }
@@ -316,6 +316,20 @@ export default function MainPage() {
       setRobloxProcess(process);
     });
   }, [mounted]);
+
+  // Periodically poll statistics to keep the device cloud status updated in real-time
+  useEffect(() => {
+    if (!dbConnected || !currentUser) return;
+
+    const interval = setInterval(async () => {
+      if (window.electronAPI && window.electronAPI.dbGetStats) {
+        const statistics = await window.electronAPI.dbGetStats(currentUser.id);
+        if (statistics) setStats(statistics);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [dbConnected, currentUser]);
 
   // Tab Handlers
   const handleTabSelect = (tabId) => {

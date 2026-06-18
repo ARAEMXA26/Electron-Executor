@@ -259,6 +259,23 @@ async function createTablesIfNotExist() {
     await pool.query(q);
   }
 
+  // Alter devices table to add active_place_id and active_game_name if they don't exist
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='devices' AND column_name='active_place_id') THEN
+          ALTER TABLE devices ADD COLUMN active_place_id BIGINT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='devices' AND column_name='active_game_name') THEN
+          ALTER TABLE devices ADD COLUMN active_game_name VARCHAR(255);
+        END IF;
+      END $$;
+    `);
+  } catch (alterErr) {
+    console.error('[DB] Alter devices table warning:', alterErr.message);
+  }
+
   // Double check and alter users table to add username if table already existed without it
   try {
     await pool.query(`
@@ -469,14 +486,16 @@ async function logExecution(scriptName, placeId, gameName, status, errorMessage 
 }
 
 // Get device-level statistics (Requirement #8)
-async function getDeviceStats() {
+async function getDeviceStats(userId = null) {
   if (!pool || !isDbConnected) return null;
   try {
-    const res = await pool.query(`
+    let queryText = `
       SELECT 
         d.id AS device_id,
         d.device_name,
         d.os_platform,
+        d.active_place_id,
+        d.active_game_name,
         COUNT(ds.script_id) AS total_synced_scripts,
         (
           SELECT COUNT(*) 
@@ -487,12 +506,32 @@ async function getDeviceStats() {
       FROM devices d
       LEFT JOIN device_scripts ds ON d.id = ds.device_id
       LEFT JOIN scripts s ON ds.script_id = s.id AND s.is_deleted = FALSE
-      GROUP BY d.id, d.device_name, d.os_platform
-    `);
+    `;
+    const params = [];
+    if (userId) {
+      queryText += ` WHERE d.user_id = $1`;
+      params.push(userId);
+    }
+    queryText += ` GROUP BY d.id, d.device_name, d.os_platform, d.active_place_id, d.active_game_name`;
+
+    const res = await pool.query(queryText, params);
     return res.rows;
   } catch (err) {
     console.error('[DB] Get device stats failed:', err);
     return null;
+  }
+}
+
+async function updateDeviceActiveGame(deviceId, placeId, gameName) {
+  if (!pool || !isDbConnected) return;
+  try {
+    await pool.query(
+      'UPDATE devices SET active_place_id = $1, active_game_name = $2, last_sync_at = CURRENT_TIMESTAMP WHERE id = $3',
+      [placeId ? parseInt(placeId) : null, gameName || null, deviceId]
+    );
+    console.log(`[DB] Updated device active game to: ${gameName} (${placeId})`);
+  } catch (err) {
+    console.error('[DB] Failed to update device active game:', err);
   }
 }
 
@@ -539,6 +578,7 @@ module.exports = {
   getScripts,
   logExecution,
   getDeviceStats,
+  updateDeviceActiveGame,
   getLinkedUser,
   unlinkDevice
 };
