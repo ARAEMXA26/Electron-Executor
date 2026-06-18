@@ -165,7 +165,7 @@ fi
 add_result "${GREEN}✓${NC} Old Roblox: Removed ($REMOVED app bundles cleaned)"
 
 # ═════════════════════════════════════════════════════════════════════
-# STEP 3 & 4: Download and Install Fresh Roblox (Fully Automatic)
+# STEP 3 & 4: Download and Install Fresh Roblox (Official CDN Method)
 # ═════════════════════════════════════════════════════════════════════
 echo ""
 echo -e "  ${BLUE}${BOLD}[3/$TOTAL_STEPS]${NC} ${BOLD}Installing Fresh Roblox${NC}"
@@ -183,7 +183,6 @@ else
   MAC_TYPE="x86_64"
 fi
 
-# ── Method 1 (Primary): Roblox API + CDN direct download ──────────
 # Step A: Fetch latest version hash from official Roblox API
 info "Fetching latest Roblox version from official API..."
 VERSION_JSON=$(curl -sS -A "$UA" \
@@ -196,308 +195,118 @@ if [ -n "$VERSION_JSON" ]; then
   VERSION_HASH=$(echo "$VERSION_JSON" | grep -oE '"clientVersionUpload"\s*:\s*"[^"]+"' | head -1 | sed 's/.*"clientVersionUpload"\s*:\s*"\([^"]*\)".*/\1/')
 fi
 
-if [ -n "$VERSION_HASH" ]; then
-  success "Latest Roblox version: $VERSION_HASH"
-
-  # Step B: Build architecture-specific download URLs
-  DOWNLOAD_FILE="/tmp/RobloxPlayer_$$.zip"
-  rm -f "$DOWNLOAD_FILE" 2>/dev/null
-
-  if [ "$MAC_TYPE" = "arm64" ]; then
-    # Apple Silicon — try ARM64-specific channel first, then universal
-    DOWNLOAD_URLS=(
-      "https://setup.rbxcdn.com/channel/zmacarm64/mac/arm64/${VERSION_HASH}-RobloxPlayer.zip"
-      "https://setup.rbxcdn.com/mac/${VERSION_HASH}-RobloxPlayer.zip"
-      "https://setup.rbxcdn.com/${VERSION_HASH}-Roblox.dmg"
-    )
-  else
-    # Intel Mac
-    DOWNLOAD_URLS=(
-      "https://setup.rbxcdn.com/mac/${VERSION_HASH}-RobloxPlayer.zip"
-      "https://setup.rbxcdn.com/${VERSION_HASH}-Roblox.dmg"
-    )
-  fi
-
-  DOWNLOADED=false
-  DOWNLOAD_TYPE=""
-  for URL in "${DOWNLOAD_URLS[@]}"; do
-    info "Downloading: $URL"
-    HTTP_CODE=$(curl -L -A "$UA" \
-      -o "$DOWNLOAD_FILE" \
-      -w "%{http_code}" \
-      --connect-timeout 20 \
-      --max-time 600 \
-      --retry 2 \
-      --retry-delay 3 \
-      -# \
-      "$URL" 2>/dev/null) || HTTP_CODE="000"
-
-    if [ "$HTTP_CODE" = "200" ] && [ -f "$DOWNLOAD_FILE" ]; then
-      FILE_BYTES=$(wc -c < "$DOWNLOAD_FILE" | tr -d ' ')
-      if [ "$FILE_BYTES" -gt 1048576 ]; then
-        DOWNLOADED=true
-        FILE_MB=$(echo "scale=1; $FILE_BYTES / 1048576" | bc 2>/dev/null || echo "?")
-        # Detect file type
-        if file "$DOWNLOAD_FILE" 2>/dev/null | grep -qiE "Zip archive"; then
-          DOWNLOAD_TYPE="zip"
-        elif file "$DOWNLOAD_FILE" 2>/dev/null | grep -qiE "disk image|dmg|apple|ISO 9660"; then
-          DOWNLOAD_TYPE="dmg"
-        else
-          DOWNLOAD_TYPE="unknown"
-        fi
-        success "Downloaded Roblox (${FILE_MB} MB, type: ${DOWNLOAD_TYPE})"
-        break
-      else
-        warn "File too small (${FILE_BYTES} bytes) — trying next URL"
-      fi
-    else
-      warn "HTTP $HTTP_CODE — trying next URL"
-    fi
-    rm -f "$DOWNLOAD_FILE" 2>/dev/null
-  done
-
-  # Step C: Extract and install
-  if [ "$DOWNLOADED" = true ]; then
-
-    if [ "$DOWNLOAD_TYPE" = "zip" ]; then
-      # ── ZIP extraction ──
-      EXTRACT_DIR="/tmp/roblox_extract_$$"
-      rm -rf "$EXTRACT_DIR" 2>/dev/null
-      mkdir -p "$EXTRACT_DIR"
-
-      info "Extracting ZIP archive..."
-      if unzip -q -o "$DOWNLOAD_FILE" -d "$EXTRACT_DIR" 2>/dev/null; then
-        # Find the .app bundle
-        ROBLOX_APP=$(find "$EXTRACT_DIR" -maxdepth 3 -name "*.app" -type d 2>/dev/null | head -1)
-
-        if [ -n "$ROBLOX_APP" ]; then
-          APP_NAME=$(basename "$ROBLOX_APP")
-          info "Found: $APP_NAME"
-
-          # Check if it's an installer or the actual app
-          if echo "$APP_NAME" | grep -qi "installer\|RobloxPlayerInstaller"; then
-            # Run the installer
-            xattr -rd com.apple.quarantine "$ROBLOX_APP" 2>/dev/null || true
-            info "Running Roblox installer..."
-            open -W "$ROBLOX_APP" 2>/dev/null || open "$ROBLOX_APP" 2>/dev/null
-
-            # Wait for installation to complete
-            info "Waiting for installation to complete..."
-            WAIT_SECS=0
-            while [ $WAIT_SECS -lt 120 ]; do
-              if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
-                break
-              fi
-              sleep 2
-              WAIT_SECS=$((WAIT_SECS + 2))
-            done
-            sleep 3
-          else
-            # Direct .app — copy to /Applications
-            info "Installing $APP_NAME to /Applications..."
-            rm -rf "/Applications/Roblox.app" 2>/dev/null || sudo rm -rf "/Applications/Roblox.app" 2>/dev/null
-            if cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null; then
-              success "Copied to /Applications"
-            else
-              info "Retrying with elevated permissions..."
-              sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null || true
-            fi
-            xattr -rd com.apple.quarantine "/Applications/Roblox.app" 2>/dev/null || true
-          fi
-        else
-          warn "No .app bundle found in ZIP"
-        fi
-      else
-        warn "Failed to extract ZIP"
-      fi
-      rm -rf "$EXTRACT_DIR" 2>/dev/null
-
-    elif [ "$DOWNLOAD_TYPE" = "dmg" ]; then
-      # ── DMG mounting ──
-      MOUNT_POINT="/tmp/roblox_mount_$$"
-      mkdir -p "$MOUNT_POINT"
-
-      info "Mounting DMG..."
-      if hdiutil attach "$DOWNLOAD_FILE" -mountpoint "$MOUNT_POINT" -nobrowse -quiet 2>/dev/null; then
-        ROBLOX_APP=$(find "$MOUNT_POINT" -maxdepth 3 -name "*.app" -type d 2>/dev/null | head -1)
-
-        if [ -n "$ROBLOX_APP" ]; then
-          APP_NAME=$(basename "$ROBLOX_APP")
-          info "Found: $APP_NAME"
-
-          if echo "$APP_NAME" | grep -qi "installer"; then
-            INSTALLER_TMP="/tmp/RobloxInstaller_$$.app"
-            cp -R "$ROBLOX_APP" "$INSTALLER_TMP" 2>/dev/null
-            xattr -rd com.apple.quarantine "$INSTALLER_TMP" 2>/dev/null || true
-
-            info "Running Roblox installer..."
-            open -W "$INSTALLER_TMP" 2>/dev/null || open "$INSTALLER_TMP" 2>/dev/null
-
-            info "Waiting for installation to complete..."
-            WAIT_SECS=0
-            while [ $WAIT_SECS -lt 120 ]; do
-              if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
-                break
-              fi
-              sleep 2
-              WAIT_SECS=$((WAIT_SECS + 2))
-            done
-            sleep 3
-            rm -rf "$INSTALLER_TMP" 2>/dev/null
-          else
-            info "Installing $APP_NAME to /Applications..."
-            rm -rf "/Applications/Roblox.app" 2>/dev/null || sudo rm -rf "/Applications/Roblox.app" 2>/dev/null
-            if cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null; then
-              success "Copied to /Applications"
-            else
-              sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null || true
-            fi
-            xattr -rd com.apple.quarantine "/Applications/Roblox.app" 2>/dev/null || true
-          fi
-        else
-          warn "No .app bundle found in DMG"
-        fi
-
-        hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || \
-          hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
-        rmdir "$MOUNT_POINT" 2>/dev/null || true
-      else
-        warn "Failed to mount DMG"
-      fi
-    fi
-
-    rm -f "$DOWNLOAD_FILE" 2>/dev/null
-
-    # ── Verify installation ──
-    if [ -d "/Applications/Roblox.app" ]; then
-      ROBLOX_INSTALLED=true
-      success "Roblox installed successfully to /Applications"
-    elif [ -d "$HOME/Applications/Roblox.app" ]; then
-      ROBLOX_INSTALLED=true
-      success "Roblox installed successfully to ~/Applications"
-    fi
-  fi
-else
-  warn "Could not fetch version info from Roblox API — trying fallback methods"
-fi
-
-# ── Method 2 (Fallback): Homebrew cask ─────────────────────────────
-if [ "$ROBLOX_INSTALLED" = false ]; then
-  if command -v brew &> /dev/null; then
-    info "Trying Homebrew cask install as fallback..."
-
-    brew uninstall --cask --force roblox 2>/dev/null || true
-    brew cleanup roblox 2>/dev/null || true
-
-    BREW_OUTPUT=$(brew install --cask --no-quarantine roblox 2>&1) && BREW_OK=true || BREW_OK=false
-    echo "$BREW_OUTPUT" | tail -5
-
-    if [ "$BREW_OK" = true ]; then
-      if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
-        ROBLOX_INSTALLED=true
-        success "Roblox installed via Homebrew cask"
-      else
-        warn "Homebrew reported success but Roblox.app not found"
-      fi
-    else
-      warn "Homebrew cask install also failed"
-    fi
-  else
-    warn "Homebrew not available for fallback"
-  fi
-fi
-
-# ── Method 3 (Last fallback): Direct DMG from official website ─────
-if [ "$ROBLOX_INSTALLED" = false ]; then
-  info "Trying direct download from official Roblox website..."
-
-  DMG_PATH="/tmp/RobloxDirect_$$.dmg"
-  rm -f "$DMG_PATH" 2>/dev/null
-
-  # Official download link (detected from roblox.com/download page)
-  DIRECT_URL="https://www.roblox.com/download/client?os=mac&renderingPlatform=nextjs"
-
-  HTTP_CODE=$(curl -L -A "$UA" \
-    -o "$DMG_PATH" \
-    -w "%{http_code}" \
-    --connect-timeout 20 \
-    --max-time 600 \
-    --retry 3 \
-    --retry-delay 5 \
-    -# \
-    "$DIRECT_URL" 2>/dev/null) || HTTP_CODE="000"
-
-  if [ "$HTTP_CODE" = "200" ] && [ -f "$DMG_PATH" ]; then
-    FILE_BYTES=$(wc -c < "$DMG_PATH" | tr -d ' ')
-    if [ "$FILE_BYTES" -gt 1048576 ]; then
-      FILE_MB=$(echo "scale=1; $FILE_BYTES / 1048576" | bc 2>/dev/null || echo "?")
-      success "Downloaded from official website (${FILE_MB} MB)"
-
-      # Try to mount and install
-      MOUNT_POINT="/tmp/roblox_mount_$$"
-      mkdir -p "$MOUNT_POINT"
-
-      if hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT_POINT" -nobrowse -quiet 2>/dev/null; then
-        ROBLOX_APP=$(find "$MOUNT_POINT" -maxdepth 3 -name "*.app" -type d 2>/dev/null | head -1)
-
-        if [ -n "$ROBLOX_APP" ]; then
-          APP_NAME=$(basename "$ROBLOX_APP")
-          xattr -rd com.apple.quarantine "$ROBLOX_APP" 2>/dev/null || true
-
-          if echo "$APP_NAME" | grep -qi "installer"; then
-            INSTALLER_TMP="/tmp/RobloxInstaller_$$.app"
-            cp -R "$ROBLOX_APP" "$INSTALLER_TMP" 2>/dev/null
-            xattr -rd com.apple.quarantine "$INSTALLER_TMP" 2>/dev/null || true
-            info "Running official Roblox installer..."
-            open -W "$INSTALLER_TMP" 2>/dev/null || open "$INSTALLER_TMP" 2>/dev/null
-            WAIT_SECS=0
-            while [ $WAIT_SECS -lt 120 ]; do
-              if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
-                break
-              fi
-              sleep 2
-              WAIT_SECS=$((WAIT_SECS + 2))
-            done
-            sleep 3
-            rm -rf "$INSTALLER_TMP" 2>/dev/null
-          else
-            rm -rf "/Applications/Roblox.app" 2>/dev/null || sudo rm -rf "/Applications/Roblox.app" 2>/dev/null
-            cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null || \
-              sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null
-            xattr -rd com.apple.quarantine "/Applications/Roblox.app" 2>/dev/null || true
-          fi
-        fi
-
-        hdiutil detach "$MOUNT_POINT" -quiet 2>/dev/null || \
-          hdiutil detach "$MOUNT_POINT" -force -quiet 2>/dev/null || true
-        rmdir "$MOUNT_POINT" 2>/dev/null || true
-      fi
-    fi
-  fi
-  rm -f "$DMG_PATH" 2>/dev/null
-
-  if [ -d "/Applications/Roblox.app" ] || [ -d "$HOME/Applications/Roblox.app" ]; then
-    ROBLOX_INSTALLED=true
-    success "Roblox installed from official website"
-  fi
-fi
-
-# ── Final status ───────────────────────────────────────────────────
-if [ "$ROBLOX_INSTALLED" = true ]; then
-  # Display architecture info for the installed Roblox
-  if [ -f "/Applications/Roblox.app/Contents/MacOS/RobloxPlayer" ]; then
-    ROBLOX_ARCH=$(file "/Applications/Roblox.app/Contents/MacOS/RobloxPlayer" 2>/dev/null | grep -oE "arm64|x86_64" | head -1)
-    if [ -n "$ROBLOX_ARCH" ]; then
-      success "Installed Roblox architecture: $ROBLOX_ARCH"
-    fi
-  fi
-  add_result "${GREEN}✓${NC} Roblox Install: Fresh copy installed ($MAC_TYPE)"
-else
-  echo -e "  ${RED}${BOLD}  ✗ All automatic download methods failed.${NC}"
-  echo -e "  ${RED}    Possible causes: no internet, firewall blocking, or Roblox CDN changes.${NC}"
+if [ -z "$VERSION_HASH" ]; then
+  echo -e "  ${RED}${BOLD}  ✗ Failed to fetch Roblox version from API.${NC}"
+  echo -e "  ${RED}    Error: Connection reset or network blocking detected.${NC}"
+  echo -e "  ${YELLOW}    IMPORTANT: Your ISP/network is blocking Roblox servers.${NC}"
+  echo -e "    Please enable a VPN (e.g., Cloudflare WARP) and try again."
   echo -e "  ${YELLOW}    Retry: ${CYAN}./setup-roblox.sh${NC}"
-  add_result "${RED}✗${NC} Roblox Install: All methods failed — check internet and retry"
+  exit 1
 fi
+
+success "Latest Roblox version: $VERSION_HASH"
+
+# Step B: Build architecture-specific download URL
+DOWNLOAD_FILE="/tmp/RobloxPlayer_$$.zip"
+rm -f "$DOWNLOAD_FILE" 2>/dev/null
+
+if [ "$MAC_TYPE" = "arm64" ]; then
+  DOWNLOAD_URL="https://setup.rbxcdn.com/mac/arm64/version-${VERSION_HASH}-RobloxPlayer.zip"
+else
+  DOWNLOAD_URL="https://setup.rbxcdn.com/mac/version-${VERSION_HASH}-RobloxPlayer.zip"
+fi
+
+info "Downloading: $DOWNLOAD_URL"
+HTTP_CODE=$(curl -L -A "$UA" \
+  -o "$DOWNLOAD_FILE" \
+  -w "%{http_code}" \
+  --connect-timeout 20 \
+  --max-time 600 \
+  --retry 3 \
+  --retry-delay 3 \
+  -# \
+  "$DOWNLOAD_URL" 2>/dev/null) || HTTP_CODE="000"
+
+if [ "$HTTP_CODE" != "200" ] || [ ! -f "$DOWNLOAD_FILE" ]; then
+  rm -f "$DOWNLOAD_FILE" 2>/dev/null
+  echo -e "  ${RED}${BOLD}  ✗ Download failed (HTTP $HTTP_CODE).${NC}"
+  echo -e "  ${RED}    Error: Connection reset or network blocking detected.${NC}"
+  echo -e "  ${YELLOW}    IMPORTANT: Your ISP/network is blocking Roblox CDN.${NC}"
+  echo -e "    Please enable a VPN (e.g., Cloudflare WARP) and try again."
+  echo -e "  ${YELLOW}    Retry: ${CYAN}./setup-roblox.sh${NC}"
+  exit 1
+fi
+
+FILE_BYTES=$(wc -c < "$DOWNLOAD_FILE" | tr -d ' ')
+if [ "$FILE_BYTES" -lt 10485760 ]; then # Must be at least 10MB to be valid
+  rm -f "$DOWNLOAD_FILE" 2>/dev/null
+  echo -e "  ${RED}${BOLD}  ✗ Downloaded file is too small or invalid (${FILE_BYTES} bytes).${NC}"
+  echo -e "  ${YELLOW}    IMPORTANT: Please enable a VPN (e.g., Cloudflare WARP) and try again.${NC}"
+  exit 1
+fi
+
+FILE_MB=$(echo "scale=1; $FILE_BYTES / 1048576" | bc 2>/dev/null || echo "?")
+success "Downloaded Roblox archive (${FILE_MB} MB)"
+
+# Step C: Extract ZIP archive
+EXTRACT_DIR="/tmp/roblox_extract_$$"
+rm -rf "$EXTRACT_DIR" 2>/dev/null
+mkdir -p "$EXTRACT_DIR"
+
+info "Extracting ZIP archive..."
+if ! unzip -q -o "$DOWNLOAD_FILE" -d "$EXTRACT_DIR" 2>/dev/null; then
+  rm -f "$DOWNLOAD_FILE" 2>/dev/null
+  rm -rf "$EXTRACT_DIR" 2>/dev/null
+  echo -e "  ${RED}${BOLD}  ✗ Failed to extract ZIP archive.${NC}"
+  exit 1
+fi
+
+rm -f "$DOWNLOAD_FILE" 2>/dev/null
+
+# Find the .app bundle (could be named RobloxPlayer.app)
+ROBLOX_APP=$(find "$EXTRACT_DIR" -maxdepth 3 -name "*.app" -type d 2>/dev/null | head -1)
+
+if [ -z "$ROBLOX_APP" ]; then
+  rm -rf "$EXTRACT_DIR" 2>/dev/null
+  echo -e "  ${RED}${BOLD}  ✗ No .app bundle found inside the downloaded archive.${NC}"
+  exit 1
+fi
+
+APP_NAME=$(basename "$ROBLOX_APP")
+info "Found application: $APP_NAME"
+
+# Direct .app — copy to /Applications
+info "Installing to /Applications/Roblox.app..."
+rm -rf "/Applications/Roblox.app" 2>/dev/null || sudo rm -rf "/Applications/Roblox.app" 2>/dev/null
+
+if cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null; then
+  success "Copied Roblox.app to /Applications"
+else
+  info "Retrying with elevated permissions..."
+  sudo cp -R "$ROBLOX_APP" "/Applications/Roblox.app" 2>/dev/null || true
+fi
+
+rm -rf "$EXTRACT_DIR" 2>/dev/null
+
+if [ ! -d "/Applications/Roblox.app" ]; then
+  echo -e "  ${RED}${BOLD}  ✗ Failed to place Roblox.app into /Applications directory.${NC}"
+  exit 1
+fi
+
+# Remove quarantine attribute
+xattr -rd com.apple.quarantine "/Applications/Roblox.app" 2>/dev/null || true
+
+# Verify architecture of installed binary
+if [ -f "/Applications/Roblox.app/Contents/MacOS/RobloxPlayer" ]; then
+  ROBLOX_ARCH=$(file "/Applications/Roblox.app/Contents/MacOS/RobloxPlayer" 2>/dev/null | grep -oE "arm64|x86_64" | head -1)
+  if [ -n "$ROBLOX_ARCH" ]; then
+    success "Installed Roblox architecture: $ROBLOX_ARCH"
+  fi
+fi
+
+ROBLOX_INSTALLED=true
+success "Roblox installed successfully to /Applications"
+add_result "${GREEN}✓${NC} Roblox Install: Fresh copy installed ($MAC_TYPE)"
 
 # ═════════════════════════════════════════════════════════════════════
 # STEP 5: Patch Roblox Bundle with Electron Executor Injection
