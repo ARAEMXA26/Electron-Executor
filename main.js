@@ -494,7 +494,10 @@ app.on('window-all-closed', () => {
 });
 
 // IPC Handler to execute scripts — dual-mode: external server OR built-in Lua engine
-ipcMain.on('execute-script', async (event, { scriptContent, scriptName }) => {
+// IMPORTANT: This handler MUST NOT block the main process event loop.
+// The Lua engine runs in a Worker Thread, and we use .then() to handle results
+// asynchronously so the main Electron process stays responsive.
+ipcMain.on('execute-script', (event, { scriptContent, scriptName }) => {
   // Check if there are any external WebSocket clients connected (exploit/Studio)
   if (hasConnectedClients()) {
     // Show native macOS notification
@@ -541,29 +544,36 @@ ipcMain.on('execute-script', async (event, { scriptContent, scriptName }) => {
     req.write(postData);
     req.end();
   } else {
-    // Mode 2: Run via built-in Lua engine (no external executor)
-    console.log(`[Execute] No external clients connected. Using built-in Lua engine for: ${scriptName}`);
+    // Mode 2: Run via built-in Lua engine in a Worker Thread (non-blocking)
+    console.log(`[Execute] No external clients connected. Using built-in Lua engine (Worker Thread) for: ${scriptName}`);
     
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('server-log', `[Built-in Simulator] Menjalankan: ${scriptName} (Catatan: Berjalan di Simulator karena tidak ada klien Roblox yang terhubung)`);
     }
 
     const gameInfo = getActiveGameInfo();
-    const result = await luaEngine.executeLua(scriptContent, scriptName, gameInfo, (message, type) => {
+    
+    // Use .then() instead of await to avoid blocking the main process event loop
+    luaEngine.executeLua(scriptContent, scriptName, gameInfo, (message, type) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('lua-output', { message, type });
       }
+    }).then((result) => {
+      if (result.success) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('server-log', `[Built-in Simulator] Selesai: ${scriptName}`);
+        }
+      } else {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('server-log', `[Built-in Simulator] Gagal: ${result.error}`);
+        }
+      }
+    }).catch((err) => {
+      console.error('[Execute] Lua engine error:', err);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('server-log', `[Built-in Simulator] Fatal error: ${err.message}`);
+      }
     });
-
-    if (result.success) {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('server-log', `[Built-in Simulator] Selesai: ${scriptName}`);
-      }
-    } else {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('server-log', `[Built-in Simulator] Gagal: ${result.error}`);
-      }
-    }
   }
 });
 
