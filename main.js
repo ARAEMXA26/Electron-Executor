@@ -77,8 +77,34 @@ function installRobloxHook() {
     FFlagHandleAltEnterFullscreenManually: 'false'
   }, null, 2);
 
-  // 3b. User-level Application Support
+  // 3a. Inside Roblox.app bundle
+  let robloxAppPath = '/Applications/Roblox.app';
+  if (!fs.existsSync(robloxAppPath)) {
+    const userRoblox = path.join(homeDir, 'Applications', 'Roblox.app');
+    if (fs.existsSync(userRoblox)) {
+      robloxAppPath = userRoblox;
+    }
+  }
 
+  if (fs.existsSync(robloxAppPath)) {
+    const robloxAppClientSettings = path.join(robloxAppPath, 'Contents', 'MacOS', 'ClientSettings');
+    safeWrite(
+      path.join(robloxAppClientSettings, 'ClientAppSettings.json'),
+      clientSettingsJson,
+      `Injected ClientAppSettings.json into Roblox.app (${robloxAppPath})`
+    );
+
+    // Re-sign patched Roblox.app to prevent Gatekeeper blocks
+    try {
+      const { execSync } = require('child_process');
+      execSync(`codesign --force --deep --sign - "${robloxAppPath}"`, { stdio: 'ignore' });
+      console.log('[Hook ✓] Re-signed patched Roblox.app');
+    } catch (e) {
+      console.warn('[Hook ⚠] Could not re-sign Roblox.app (non-fatal)');
+    }
+  }
+
+  // 3b. User-level Application Support
   const userClientSettings = path.join(homeDir, 'Library', 'Application Support', 'Roblox', 'ClientSettings');
   safeWrite(
     path.join(userClientSettings, 'ClientAppSettings.json'),
