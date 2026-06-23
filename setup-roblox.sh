@@ -182,13 +182,11 @@ ARCH=$(uname -m)
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
 
 # ── Detect Mac architecture ────────────────────────────────────────
-if [ "$ARCH" = "arm64" ]; then
-  info "Detected: Apple Silicon (M-series) — downloading ARM64 build"
-  MAC_TYPE="arm64"
-else
-  info "Detected: Intel Mac (x86_64) — downloading Intel build"
-  MAC_TYPE="x86_64"
-fi
+# Force x86_64 build because the injection libraries (libOpiumware.dylib / libmimalloc.3.dylib) are x86_64 only.
+# This runs Roblox Player via Rosetta 2 on Apple Silicon (M-series) Macs.
+info "Injection binaries are x86_64 (Intel) only."
+info "Forcing download of Intel build of Roblox Player to enable compatibility (via Rosetta 2 on Apple Silicon)."
+MAC_TYPE="x86_64"
 
 # Step A: Fetch latest version hash from Homebrew Cask API (which is not blocked) or Roblox API
 info "Fetching latest Roblox version hash..."
