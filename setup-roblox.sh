@@ -407,10 +407,16 @@ if [ -n "$ROBLOX_PATH" ] && [ -d "$ROBLOX_PATH" ]; then
   success "Ad-hoc code signature applied to patched Roblox"
   PATCH_COUNT=$((PATCH_COUNT + 1))
 
-  # 5e. Write-protect Roblox bundle to prevent auto-updater from replacing the x86_64 build
-  info "Write-protecting Roblox Player app bundle to block auto-updates..."
-  chmod -R 555 "$ROBLOX_PATH" 2>/dev/null || sudo chmod -R 555 "$ROBLOX_PATH" 2>/dev/null || true
-  success "Roblox Player app bundle write-protected"
+  # 5e. Disable the background installer to block auto-updates without permission crashes
+  info "Disabling Roblox background installer/updater to prevent auto-updates..."
+  if [ -d "$ROBLOX_PATH/Contents/MacOS/RobloxPlayerInstaller.app" ]; then
+    mv "$ROBLOX_PATH/Contents/MacOS/RobloxPlayerInstaller.app" "$ROBLOX_PATH/Contents/MacOS/RobloxPlayerInstaller.app.disabled" 2>/dev/null || \
+      sudo mv "$ROBLOX_PATH/Contents/MacOS/RobloxPlayerInstaller.app" "$ROBLOX_PATH/Contents/MacOS/RobloxPlayerInstaller.app.disabled" 2>/dev/null || true
+  fi
+  success "Roblox background installer/updater disabled"
+
+  # Restore standard permissions (755) to make sure logs and local updates can run without crashing
+  chmod -R 755 "$ROBLOX_PATH" 2>/dev/null || sudo chmod -R 755 "$ROBLOX_PATH" 2>/dev/null || true
 
 else
   warn "Roblox.app not found — skipping bundle patching"

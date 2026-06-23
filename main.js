@@ -138,13 +138,25 @@ function installRobloxHook() {
       console.warn('[Hook ⚠] Could not re-sign Roblox.app (non-fatal)');
     }
 
-    // Write-protect Roblox bundle to prevent auto-updater from replacing the x86_64 build
+    // Disable the background installer to block auto-updates without permission crashes
     try {
       const { execSync } = require('child_process');
-      execSync(`chmod -R 555 "${robloxAppPath}" 2>/dev/null || true`);
-      console.log('[Hook ✓] Roblox Player app bundle write-protected (read-only)');
+      const installerPath = path.join(robloxAppPath, 'Contents', 'MacOS', 'RobloxPlayerInstaller.app');
+      if (fs.existsSync(installerPath)) {
+        execSync(`mv "${installerPath}" "${installerPath}.disabled" 2>/dev/null || true`);
+        console.log('[Hook ✓] Roblox background installer/updater disabled');
+      }
     } catch (e) {
-      console.warn('[Hook ⚠] Could not write-protect Roblox.app');
+      console.warn('[Hook ⚠] Could not disable Roblox background installer/updater');
+    }
+
+    // Restore standard write permissions (755) to prevent installer crashes
+    try {
+      const { execSync } = require('child_process');
+      execSync(`chmod -R 755 "${robloxAppPath}" 2>/dev/null || true`);
+      console.log('[Hook ✓] Roblox Player app bundle permissions set to 755 (writeable)');
+    } catch (e) {
+      console.warn('[Hook ⚠] Could not restore write permissions for Roblox.app');
     }
   }
 
