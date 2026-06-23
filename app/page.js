@@ -146,13 +146,13 @@ export default function MainPage() {
 
   const handleRetryDb = async () => {
     if (!window.electronAPI) return;
-    appendLog('Connecting to PostgreSQL database...', 'info-log');
+    appendLog('Connecting to PostgreSQL database...', 'info-log', 'terminal');
     const res = await window.electronAPI.dbInit();
     if (res.success) {
-      appendLog('Database successfully connected!', 'success-log');
+      appendLog('Database successfully connected!', 'success-log', 'terminal');
       checkDbStatus();
     } else {
-      appendLog(`Failed to connect to database: ${res.error}`, 'roblox-error');
+      appendLog(`Failed to connect to database: ${res.error}`, 'roblox-error', 'terminal');
       alert(`Could not connect: ${res.error}`);
     }
   };
@@ -163,13 +163,13 @@ export default function MainPage() {
     }
     setCurrentUser(null);
     setActiveSidebarTab('editor');
-    appendLog('Logged out successfully from this device.', 'system-log', 'console');
+    appendLog('Logged out successfully from this device.', 'system-log', 'terminal');
   };
 
   // Synchronize tabs scripts to DB
   const syncLocalScriptsToDb = async (userId) => {
     if (!window.electronAPI || !userId) return;
-    appendLog('Syncing scripts to PostgreSQL storage...', 'info-log');
+    appendLog('Syncing scripts to PostgreSQL storage...', 'info-log', 'terminal');
     let syncCount = 0;
     
     for (const tab of tabs) {
@@ -191,7 +191,7 @@ export default function MainPage() {
       if (res.success) syncCount++;
     }
 
-    appendLog(`Synced ${syncCount} scripts to PostgreSQL.`, 'success-log');
+    appendLog(`Synced ${syncCount} scripts to PostgreSQL.`, 'success-log', 'terminal');
     
     // Refresh stats
     const statistics = await window.electronAPI.dbGetStats(userId);
@@ -249,10 +249,17 @@ export default function MainPage() {
 
     // Listen to logs from Express server
     window.electronAPI.onServerLog((message) => {
-      if (message.startsWith('Executed')) {
-        appendLog(message, 'success-log', 'console');
+      if (message.startsWith('[Built-in Simulator] Selesai:')) {
+        appendLog('[SUCCESS] Simulator: Script executed successfully.', 'success-log', 'console');
+      } else if (message.startsWith('[Built-in Simulator] Gagal:')) {
+        const errMsg = message.replace('[Built-in Simulator] Gagal:', '').trim();
+        appendLog(`[ERROR] Simulator: Script execution failed: ${errMsg}`, 'roblox-error', 'console');
       } else {
-        appendLog(message, 'system-log', 'console');
+        if (message.startsWith('Executed')) {
+          appendLog(message, 'success-log', 'terminal');
+        } else {
+          appendLog(message, 'system-log', 'terminal');
+        }
       }
     });
 
@@ -262,15 +269,22 @@ export default function MainPage() {
       if (type === 'warn') logClass = 'roblox-warn';
       if (type === 'error') logClass = 'roblox-error';
       appendLog(`[Roblox Client] ${message}`, logClass, 'rconsole');
+
+      // Check for execution status to display in CONSOLE
+      if (message === 'Script executed successfully.') {
+        appendLog('[SUCCESS] Script executed successfully.', 'success-log', 'console');
+      } else if (message.startsWith('Compilation Error:') || message.startsWith('Runtime Error:')) {
+        appendLog(`[ERROR] Script execution failed: ${message}`, 'roblox-error', 'console');
+      }
     });
 
     // Listen to background process checker
     window.electronAPI.onRobloxProcessStatus(({ running, type }) => {
       setRobloxProcess({ running, type });
       if (running) {
-        appendLog(`${type} process detected! Waiting for connection/hook...`, 'info-log', 'console');
+        appendLog(`${type} process detected! Waiting for connection/hook...`, 'info-log', 'terminal');
       } else {
-        appendLog('Roblox process closed.', 'system-log', 'console');
+        appendLog('Roblox process closed.', 'system-log', 'terminal');
         setConnectionStatus({ connected: false, clients: 0 });
         setActiveGame({ placeId: null, gameName: null, jobId: null, executor: null });
       }
@@ -285,9 +299,9 @@ export default function MainPage() {
       setActiveGame(gameInfo);
       if (gameInfo.gameName) {
         if (gameInfo.executor === 'AutoDetect') {
-          appendLog(`Mendeteksi game aktif: "${gameInfo.gameName}" (Place ID: ${gameInfo.placeId})`, 'info-log', 'console');
+          appendLog(`Mendeteksi game aktif: "${gameInfo.gameName}" (Place ID: ${gameInfo.placeId})`, 'info-log', 'terminal');
         } else {
-          appendLog(`Roblox executor hooked successfully in game "${gameInfo.gameName}" (Place ID: ${gameInfo.placeId}) via ${gameInfo.executor}!`, 'success-log', 'console');
+          appendLog(`Roblox executor hooked successfully in game "${gameInfo.gameName}" (Place ID: ${gameInfo.placeId}) via ${gameInfo.executor}!`, 'success-log', 'terminal');
           // Auto refresh stats
           window.electronAPI.dbGetStats(currentUser?.id).then(statistics => {
             if (statistics) setStats(statistics);
@@ -299,9 +313,9 @@ export default function MainPage() {
     // Listen to developer OTP fallback notifications
     if (window.electronAPI.onDeveloperOtp) {
       window.electronAPI.onDeveloperOtp(({ email, otpCode, previewUrl }) => {
-        appendLog(`[Developer Mode] Ethereal OTP for ${email}: ${otpCode}`, 'success-log', 'console');
+        appendLog(`[Developer Mode] Ethereal OTP for ${email}: ${otpCode}`, 'success-log', 'terminal');
         if (previewUrl) {
-          appendLog(`[Developer Mode] Ethereal Preview: ${previewUrl}`, 'info-log', 'console');
+          appendLog(`[Developer Mode] Ethereal Preview: ${previewUrl}`, 'info-log', 'terminal');
         }
       });
     }
@@ -312,7 +326,6 @@ export default function MainPage() {
         let logClass = 'roblox-print';
         if (type === 'warn') logClass = 'roblox-warn';
         if (type === 'error') logClass = 'roblox-error';
-        appendLog(message, logClass, 'console');
         appendLog(message, logClass, 'rconsole');
       });
     }
@@ -418,7 +431,7 @@ export default function MainPage() {
     }
     setTabs(newTabs);
     setActiveTabId(newActiveId);
-    appendLog(`Physically deleted script: ${deletingTab.name}`, 'system-log', 'console');
+    appendLog(`Physically deleted script: ${deletingTab.name}`, 'system-log', 'terminal');
   };
 
   const handleTabExecute = (tabId) => {
@@ -428,7 +441,7 @@ export default function MainPage() {
 
     // If Roblox is running but not yet connected, still send the script (it gets queued)
     if (robloxProcess.running && !connectionStatus.connected) {
-      appendLog(`Script "${tab.name}" diantrekan — menunggu koneksi otomatis ke Roblox...`, 'info-log', 'console');
+      appendLog(`Script "${tab.name}" diantrekan — menunggu koneksi otomatis ke Roblox...`, 'info-log', 'terminal');
       setToast({
         show: true,
         message: `Script diantrekan — menunggu koneksi Roblox...`,
@@ -441,7 +454,7 @@ export default function MainPage() {
     if (placeIdMatch && activeGame.placeId) {
       const allowedId = parseInt(placeIdMatch[1]);
       if (allowedId !== parseInt(activeGame.placeId)) {
-        appendLog('Execution cancelled: script not compatible with current game.', 'roblox-warn', 'console');
+        appendLog('Execution cancelled: script not compatible with current game.', 'roblox-warn', 'terminal');
         setToast({
           show: true,
           message: `Script not compatible with current game! Only Place: ${allowedId}`,
@@ -451,7 +464,7 @@ export default function MainPage() {
       }
     }
 
-    appendLog(`Menjalankan script: ${tab.name}`, 'system-log', 'console');
+    appendLog(`Menjalankan script: ${tab.name}`, 'system-log', 'terminal');
     window.electronAPI.executeScript(tab.content, tab.name);
     
     // Show premium toast notification
@@ -524,7 +537,7 @@ export default function MainPage() {
 
     // If Roblox is running but not yet connected, still send the script (it gets queued)
     if (robloxProcess.running && !connectionStatus.connected) {
-      appendLog(`Script "${activeTab.name}" diantrekan — menunggu koneksi otomatis ke Roblox...`, 'info-log', 'console');
+      appendLog(`Script "${activeTab.name}" diantrekan — menunggu koneksi otomatis ke Roblox...`, 'info-log', 'terminal');
       setToast({
         show: true,
         message: `Script diantrekan — menunggu koneksi Roblox...`,
@@ -537,7 +550,7 @@ export default function MainPage() {
     if (placeIdMatch && activeGame.placeId) {
       const allowedId = parseInt(placeIdMatch[1]);
       if (allowedId !== parseInt(activeGame.placeId)) {
-        appendLog('Execution cancelled: script not compatible with current game.', 'roblox-warn', 'console');
+        appendLog('Execution cancelled: script not compatible with current game.', 'roblox-warn', 'terminal');
         setToast({
           show: true,
           message: `Script not compatible with current game! Only Place: ${allowedId}`,
@@ -547,7 +560,7 @@ export default function MainPage() {
       }
     }
 
-    appendLog(`Menjalankan script: ${activeTab.name}`, 'system-log', 'console');
+    appendLog(`Menjalankan script: ${activeTab.name}`, 'system-log', 'terminal');
     window.electronAPI.executeScript(activeTab.content, activeTab.name);
     
     // Show premium toast notification
@@ -575,7 +588,7 @@ export default function MainPage() {
         { id: newId, name: fileData.name, content: fileData.content, path: fileData.path, unsaved: false }
       ]);
       setActiveTabId(newId);
-      appendLog(`Loaded file: ${fileData.name}`, 'info-log', 'console');
+      appendLog(`Loaded file: ${fileData.name}`, 'info-log', 'terminal');
     }
   };
 
@@ -602,7 +615,8 @@ export default function MainPage() {
         nextAutoexec 
           ? `Script "${activeTab.name}" marked for automatic execution.` 
           : `Script "${activeTab.name}" unmarked from automatic execution.`,
-        'success-log'
+        'success-log',
+        'terminal'
       );
     } else {
       setToast({
@@ -615,12 +629,12 @@ export default function MainPage() {
 
   const handleLaunchRoblox = async () => {
     if (!window.electronAPI) return;
-    appendLog('Launching Roblox / Roblox Studio...', 'info-log', 'console');
+    appendLog('Launching Roblox / Roblox Studio...', 'info-log', 'terminal');
     const result = await window.electronAPI.launchRoblox();
     if (result.success) {
-      appendLog(`Successfully started ${result.app}!`, 'success-log', 'console');
+      appendLog(`Successfully started ${result.app}!`, 'success-log', 'terminal');
     } else {
-      appendLog(`Failed to launch Roblox: ${result.error}`, 'roblox-error', 'console');
+      appendLog(`Failed to launch Roblox: ${result.error}`, 'roblox-error', 'terminal');
       alert(result.error);
     }
   };
@@ -693,7 +707,7 @@ export default function MainPage() {
           dbStatus={dbConnected}
           onRetryDb={handleRetryDb}
           onAuthSuccess={handleAuthSuccess}
-          appendLog={(msg, type) => appendLog(msg, type, 'console')}
+          appendLog={(msg, type) => appendLog(msg, type, 'terminal')}
         />
       ) : (
         /* Render the main Dashboard only after successful login/registration */
