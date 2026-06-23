@@ -80,7 +80,7 @@ print_step() {
   local title="$2"
   echo ""
   if [ "$FROM_INSTALLER" = true ]; then
-    echo -e "  ${BLUE}${BOLD}[6.${num}]${NC} ${BOLD}${title}${NC}"
+    echo -e "  ${BLUE}${BOLD}[4.${num}]${NC} ${BOLD}${title}${NC}"
   else
     echo -e "  ${BLUE}${BOLD}[${num}/${TOTAL_STEPS}]${NC} ${BOLD}${title}${NC}"
   fi
