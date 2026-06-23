@@ -73,13 +73,13 @@ fail() {
 # ── Configuration ────────────────────────────────────────────────────
 REPO_URL="https://github.com/ARAEMXA26/Electron-Executor.git"
 INSTALL_DIR="$HOME/Documents/ElectronExecutor"
-TOTAL_STEPS=7
+TOTAL_STEPS=4
 
 # ── Start ────────────────────────────────────────────────────────────
 print_banner
 
-# ── Step 1: OS Check ─────────────────────────────────────────────────
-step 1 "Checking system requirements..."
+# ── Step 1: System & Prerequisites Verification ─────────────────────
+step 1 "Verifying system requirements and prerequisites..."
 
 if [[ "$(uname)" != "Darwin" ]]; then
   fail "This installer only supports macOS. Detected: $(uname)"
@@ -100,8 +100,8 @@ else
   info "Roblox Player not found — will be downloaded and injected automatically"
 fi
 
-# ── Step 2: Install prerequisites ───────────────────────────────────
-step 2 "Checking prerequisites (Homebrew, Node.js, Git)..."
+# Verifying dependencies
+info "Checking prerequisites (Homebrew, Node.js, Git)..."
 
 # Check/install Homebrew
 if ! command -v brew &> /dev/null; then
@@ -148,8 +148,8 @@ else
   success "Git found ($(git --version | cut -d' ' -f3))"
 fi
 
-# ── Step 3: Clone or update repository ──────────────────────────────
-step 3 "Downloading Electron Executor..."
+# ── Step 2: Download & Setup Dependencies ────────────────────────────
+step 2 "Downloading source repository and setting up dependencies..."
 
 # Deleting old Electron Executor installations to ensure a fresh clean reinstall
 if pgrep -f "Electron Executor" >/dev/null 2>&1; then
@@ -184,8 +184,8 @@ git clone "$REPO_URL" "$INSTALL_DIR" || fail "Failed to clone repository. Check 
 cd "$INSTALL_DIR"
 success "Repository cloned to $INSTALL_DIR"
 
-# ── Step 4: Install Node.js dependencies ────────────────────────────
-step 4 "Installing Node.js dependencies..."
+# Installing npm dependencies
+info "Installing package dependencies..."
 
 cd "$INSTALL_DIR"
 npm install 2>&1 | tail -3
@@ -195,8 +195,8 @@ else
   fail "Failed to install dependencies. Check the error above."
 fi
 
-# ── Step 5: Build and package macOS App ──────────────────────────────
-step 5 "Building and packaging macOS App..."
+# ── Step 3: Compile & Package Application ───────────────────────────
+step 3 "Compiling, packaging, and installing application bundle..."
 
 cd "$INSTALL_DIR"
 info "Compiling production build..."
@@ -272,8 +272,8 @@ killall Dock Finder 2>/dev/null || true
 success "Launchpad and Finder databases refreshed"
 
 
-# ── Step 6: Auto-setup Roblox ────────────────────────────────────────
-step 6 "Setting up Roblox integration..."
+# ── Step 4: Roblox Integration & Launch ──────────────────────────────
+step 4 "Configuring Roblox connection hook patches and launching..."
 
 if [ -f "$INSTALL_DIR/setup-roblox.sh" ]; then
   chmod +x "$INSTALL_DIR/setup-roblox.sh"
@@ -284,8 +284,8 @@ else
   warn "You can run it manually later: ./setup-roblox.sh"
 fi
 
-# ── Step 7: Launch application ───────────────────────────────────────
-step 7 "Launching Electron Executor..."
+# Finalizing and starting app
+info "Launching Electron Executor..."
 
 echo ""
 echo -e "${GREEN}${BOLD}  ╔══════════════════════════════════════════════════════╗${NC}"
