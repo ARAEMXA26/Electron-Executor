@@ -374,7 +374,34 @@ if [ -n "$ROBLOX_PATH" ] && [ -d "$ROBLOX_PATH" ]; then
     fail_soft "Failed to copy loader.lua to autoexec"
   fi
 
-  # 5c. Re-sign the patched Roblox.app to prevent Gatekeeper issues
+  # 5c. Inject Executor Dylib (libOpiumware.dylib) and patched libmimalloc.3.dylib
+  BIN_DIR="$SCRIPT_DIR/bin"
+  if [ -d "$BIN_DIR" ] && [ -f "$BIN_DIR/libOpiumware.dylib" ] && [ -f "$BIN_DIR/libmimalloc.3.dylib" ]; then
+    info "Injecting libOpiumware.dylib and patching libmimalloc.3.dylib..."
+    
+    # Copy libOpiumware.dylib to Resources
+    cp "$BIN_DIR/libOpiumware.dylib" "$ROBLOX_PATH/Contents/Resources/libOpiumware.dylib" 2>/dev/null || \
+      sudo cp "$BIN_DIR/libOpiumware.dylib" "$ROBLOX_PATH/Contents/Resources/libOpiumware.dylib" 2>/dev/null
+      
+    # Copy libmimalloc.3.dylib to MacOS (overwriting the official one)
+    cp "$BIN_DIR/libmimalloc.3.dylib" "$ROBLOX_PATH/Contents/MacOS/libmimalloc.3.dylib" 2>/dev/null || \
+      sudo cp "$BIN_DIR/libmimalloc.3.dylib" "$ROBLOX_PATH/Contents/MacOS/libmimalloc.3.dylib" 2>/dev/null
+      
+    # Remove quarantine flags
+    xattr -rd com.apple.quarantine "$ROBLOX_PATH/Contents/Resources/libOpiumware.dylib" 2>/dev/null || true
+    xattr -rd com.apple.quarantine "$ROBLOX_PATH/Contents/MacOS/libmimalloc.3.dylib" 2>/dev/null || true
+    
+    if [ -f "$ROBLOX_PATH/Contents/Resources/libOpiumware.dylib" ] && [ -f "$ROBLOX_PATH/Contents/MacOS/libmimalloc.3.dylib" ]; then
+      success "Successfully injected libOpiumware.dylib and patched libmimalloc.3.dylib"
+      PATCH_COUNT=$((PATCH_COUNT + 2))
+    else
+      fail_soft "Failed to copy injection files into Roblox bundle"
+    fi
+  else
+    warn "Injection binaries not found in workspace 'bin' folder"
+  fi
+
+  # 5d. Re-sign the patched Roblox.app to prevent Gatekeeper issues
   info "Re-signing patched Roblox.app..."
   codesign --force --deep --sign - "$ROBLOX_PATH" 2>/dev/null || true
   success "Ad-hoc code signature applied to patched Roblox"
@@ -438,6 +465,30 @@ if [ -n "$ROBLOX_PATH" ] && [ -f "$ROBLOX_PATH/Contents/MacOS/ClientSettings/Cli
   VERIFY_PASS=$((VERIFY_PASS + 1))
 else
   fail_soft "ClientAppSettings.json not found in Roblox bundle"
+  VERIFY_FAIL=$((VERIFY_FAIL + 1))
+fi
+
+# Verify Executor Dylib in bundle
+if [ -n "$ROBLOX_PATH" ] && [ -f "$ROBLOX_PATH/Contents/Resources/libOpiumware.dylib" ]; then
+  success "libOpiumware.dylib verified inside Roblox bundle Resources"
+  VERIFY_PASS=$((VERIFY_PASS + 1))
+else
+  fail_soft "libOpiumware.dylib not found inside Roblox bundle Resources"
+  VERIFY_FAIL=$((VERIFY_FAIL + 1))
+fi
+
+# Verify patched libmimalloc.3.dylib in bundle
+if [ -n "$ROBLOX_PATH" ] && [ -f "$ROBLOX_PATH/Contents/MacOS/libmimalloc.3.dylib" ]; then
+  # Verify if it has the Opiumware reference
+  if otool -L "$ROBLOX_PATH/Contents/MacOS/libmimalloc.3.dylib" 2>/dev/null | grep -q "libOpiumware.dylib"; then
+    success "libmimalloc.3.dylib verified and confirmed patched for injection"
+    VERIFY_PASS=$((VERIFY_PASS + 1))
+  else
+    fail_soft "libmimalloc.3.dylib is not patched (missing libOpiumware reference)"
+    VERIFY_FAIL=$((VERIFY_FAIL + 1))
+  fi
+else
+  fail_soft "libmimalloc.3.dylib not found inside Roblox bundle MacOS"
   VERIFY_FAIL=$((VERIFY_FAIL + 1))
 fi
 

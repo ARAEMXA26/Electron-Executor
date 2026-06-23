@@ -194,12 +194,342 @@ local function executeSource(sourceCode, sourceName, sourceId)
                     return old
                 end
             end,
-            hookfunction = function(f, hook) return f end,
+            hookfunction = function(f, hook)
+                pcall(function()
+                    httpPost(baseUrl .. "/log", HttpService:JSONEncode({
+                        message = "[Hook] hookfunction executed",
+                        type = "info"
+                    }))
+                end)
+                return f
+            end,
+            detourfunction = function(original, hook)
+                return env.hookfunction(original, hook)
+            end,
+            detourfunc = function(original, hook)
+                return env.hookfunction(original, hook)
+            end,
+            getnamecallmethod = function() return "Index" end,
+            setnamecallmethod = function(method) return true end,
             newcclosure = function(f) return f end,
             iscclosure = function(f) return false end,
             islclosure = function(f) return true end,
             identifyexecutor = function() return "Electron Executor", "v1.0" end,
             getexecutorname = function() return "Electron Executor" end,
+            
+            -- Identity management
+            getidentity = function() return 8 end,
+            setidentity = function(level) return true end,
+            getthreadidentity = function() return 8 end,
+            setthreadidentity = function(level) return true end,
+            get_thread_identity = function() return 8 end,
+            get_thread_context = function() return 8 end,
+
+            -- Drawing API
+            Drawing = {
+                new = function(className)
+                    local drawObj = {
+                        Visible = true,
+                        ZIndex = 0,
+                        Transparency = 1,
+                        Color = Color3.new(1, 1, 1),
+                        Remove = function() end,
+                        Destroy = function() end
+                    }
+                    if className == "Line" then
+                        drawObj.From = Vector2.new(0, 0)
+                        drawObj.To = Vector2.new(0, 0)
+                        drawObj.Thickness = 1
+                    elseif className == "Text" then
+                        drawObj.Text = ""
+                        drawObj.Size = 12
+                        drawObj.Center = false
+                        drawObj.Outline = false
+                        drawObj.OutlineColor = Color3.new(0, 0, 0)
+                        drawObj.Position = Vector2.new(0, 0)
+                    elseif className == "Circle" then
+                        drawObj.Position = Vector2.new(0, 0)
+                        drawObj.Radius = 10
+                        drawObj.Thickness = 1
+                        drawObj.Filled = false
+                    elseif className == "Square" then
+                        drawObj.Position = Vector2.new(0, 0)
+                        drawObj.Size = Vector2.new(0, 0)
+                        drawObj.Thickness = 1
+                        drawObj.Filled = false
+                    end
+                    pcall(function()
+                        httpPost(baseUrl .. "/log", HttpService:JSONEncode({
+                            message = "[Drawing.new] Created mock drawing primitive: " .. tostring(className),
+                            type = "info"
+                        }))
+                    end)
+                    return drawObj
+                end,
+                Fonts = { UI = 0, System = 1, Plex = 2, Monospace = 3 }
+            },
+
+            -- Decompiler Bridge
+            decompile = function(scriptObj)
+                local src = "local test = 1\nprint('decompiled')"
+                pcall(function()
+                    if typeof(scriptObj) == "Instance" then
+                        src = scriptObj.Source or "-- Source code unavailable"
+                    end
+                end)
+                local success, decompiled = pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    local res = requestFunc({
+                        Url = baseUrl .. "/decompile",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ scriptSource = src, scriptName = tostring(scriptObj) })
+                    })
+                    return res and res.Body or src
+                end)
+                return success and decompiled or src
+            end,
+            decompilefunction = function(func)
+                return "-- Function decompiled successfully"
+            end,
+
+            -- Filesystem Operations
+            saveinstance = function(options)
+                local fileName = options and options.fileName
+                pcall(function()
+                    httpPost(baseUrl .. "/saveinstance", HttpService:JSONEncode({
+                        fileName = fileName
+                    }))
+                end)
+            end,
+            readfile = function(filePath)
+                local reqSuccess, reqResult = pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    local res = requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "readfile", path = filePath })
+                    })
+                    if res and res.Body then
+                        local json = HttpService:JSONDecode(res.Body)
+                        if json.success then return json.content end
+                    end
+                    return ""
+                end)
+                return reqSuccess and reqResult or ""
+            end,
+            writefile = function(filePath, content)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "writefile", path = filePath, content = content })
+                    })
+                end)
+            end,
+            appendfile = function(filePath, content)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "appendfile", path = filePath, content = content })
+                    })
+                end)
+            end,
+            isfile = function(filePath)
+                local success, exists = pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    local res = requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "isfile", path = filePath })
+                    })
+                    if res and res.Body then
+                        local json = HttpService:JSONDecode(res.Body)
+                        return json.exists == true
+                    end
+                    return false
+                end)
+                return success and exists
+            end,
+            isfolder = function(folderPath)
+                local success, exists = pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    local res = requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "isfolder", path = folderPath })
+                    })
+                    if res and res.Body then
+                        local json = HttpService:JSONDecode(res.Body)
+                        return json.exists == true
+                    end
+                    return false
+                end)
+                return success and exists
+            end,
+            makefolder = function(folderPath)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "makefolder", path = folderPath })
+                    })
+                end)
+            end,
+            delfile = function(filePath)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "delfile", path = filePath })
+                    })
+                end)
+            end,
+            delfolder = function(folderPath)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "delfolder", path = folderPath })
+                    })
+                end)
+            end,
+            listfiles = function(folderPath)
+                local success, files = pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    local res = requestFunc({
+                        Url = baseUrl .. "/filesystem",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "listfiles", path = folderPath })
+                    })
+                    if res and res.Body then
+                        local json = HttpService:JSONDecode(res.Body)
+                        return json.files or {}
+                    end
+                    return {}
+                end)
+                return success and files or {}
+            end,
+
+            -- Crypt Library
+            crypt = {
+                base64encode = function(data)
+                    return HttpService:UrlEncode(data) -- base64 fallback or similar URL encode
+                end,
+                base64decode = function(data)
+                    return data -- placeholder or decode
+                end,
+                encrypt = function(data, key) return data end,
+                decrypt = function(data, key) return data end,
+                hash = function(data, algorithm) return "hash_placeholder" end,
+                generatekey = function() return HttpService:GenerateGUID(false) end
+            },
+
+            -- WebSocket Client
+            WebSocket = {
+                connect = function(url)
+                    local wsMock = {
+                        Send = function(self, msg)
+                            sendAppLog("[WebSocket Client Send] " .. tostring(msg))
+                        end,
+                        Close = function(self)
+                            sendAppLog("[WebSocket Client Closed]")
+                        end
+                    }
+                    wsMock.OnMessage = { Connect = function(self, callback) end }
+                    wsMock.OnClose = { Connect = function(self, callback) end }
+                    sendAppLog("[WebSocket Client] Connected to " .. tostring(url))
+                    return wsMock
+                end
+            },
+
+            -- Remote Console (RConsole)
+            rconsoleprint = function(msg)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/console",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "print", message = tostring(msg) })
+                    })
+                end)
+            end,
+            rconsolewarn = function(msg)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/console",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "print", message = tostring(msg), type = "warn" })
+                    })
+                end)
+            end,
+            rconsoleerr = function(msg)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/console",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "print", message = tostring(msg), type = "error" })
+                    })
+                end)
+            end,
+            rconsoleclear = function()
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/console",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "clear" })
+                    })
+                end)
+            end,
+            rconsoleclose = function()
+                pcall(function() sendAppLog("[RConsole] Console closed") end)
+            end,
+            rconsoletitle = function(title)
+                pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    requestFunc({
+                        Url = baseUrl .. "/console",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "title", title = tostring(title) })
+                    })
+                end)
+            end,
+            rconsoleinput = function()
+                local success, val = pcall(function()
+                    local requestFunc = request or http.request or syn.request or http_request
+                    local res = requestFunc({
+                        Url = baseUrl .. "/console",
+                        Method = "POST",
+                        Headers = { ["Content-Type"] = "application/json" },
+                        Body = HttpService:JSONEncode({ action = "input" })
+                    })
+                    return res and res.Body or ""
+                end)
+                return success and val or ""
+            end,
             
             -- Http request compatibility
             request = function(options)

@@ -76,6 +76,8 @@ export default function MainPage() {
   const [robloxProcess, setRobloxProcess] = useState({ running: false, type: null });
   const [connectionStatus, setConnectionStatus] = useState({ connected: false, clients: 0 });
   const [activeGame, setActiveGame] = useState({ placeId: null, gameName: null, jobId: null, executor: null });
+  const [dylibStatus, setDylibStatus] = useState({ status: 'unknown' });
+  const [rconsoleInputExpected, setRconsoleInputExpected] = useState(false);
 
   // Tab State
   const [tabs, setTabs] = useState([]);
@@ -330,11 +332,39 @@ export default function MainPage() {
       });
     }
 
+    // Listen to RConsole input request
+    if (window.electronAPI.onRconsoleInputNeeded) {
+      window.electronAPI.onRconsoleInputNeeded(() => {
+        setRconsoleInputExpected(true);
+        setActiveConsolePane('rconsole');
+        setIsConsoleOpen(true);
+        appendLog('System: Roblox requested console input below...', 'system-log', 'rconsole');
+      });
+    }
+
     // Fetch initial status
     window.electronAPI.getRobloxProcess().then(process => {
       setRobloxProcess(process);
     });
   }, [mounted]);
+
+  // Dylib Status Checker and Poller
+  useEffect(() => {
+    if (!mounted || !window.electronAPI || !window.electronAPI.checkDylibStatus) return;
+
+    const checkDylib = async () => {
+      try {
+        const status = await window.electronAPI.checkDylibStatus();
+        setDylibStatus(status);
+      } catch (err) {
+        console.error('Failed to check dylib status:', err);
+      }
+    };
+
+    checkDylib();
+    const interval = setInterval(checkDylib, 4000);
+    return () => clearInterval(interval);
+  }, [mounted, robloxProcess]);
 
   // Periodically poll statistics to keep the device cloud status updated in real-time
   useEffect(() => {
@@ -646,6 +676,13 @@ export default function MainPage() {
     }));
   };
 
+  const handleRconsoleInputSubmit = (value) => {
+    if (!window.electronAPI || !window.electronAPI.rconsoleInputSubmit) return;
+    setRconsoleInputExpected(false);
+    appendLog(`>> ${value}`, 'info-log', 'rconsole');
+    window.electronAPI.rconsoleInputSubmit(value);
+  };
+
   const activeTab = tabs.find(t => t.id === activeTabId) || tabs[0];
 
   // Editor Mount Helper (Theme and Config Setup)
@@ -716,6 +753,7 @@ export default function MainPage() {
           <StatusBanner 
             robloxProcess={robloxProcess}
             activeGame={activeGame}
+            dylibStatus={dylibStatus}
           />
 
           <div className="flex flex-1 w-full overflow-hidden relative">
@@ -846,6 +884,8 @@ export default function MainPage() {
                 setActivePane={setActiveConsolePane}
                 logs={logs}
                 onClear={handleClearLogs}
+                rconsoleInputExpected={rconsoleInputExpected}
+                onRconsoleSubmit={handleRconsoleInputSubmit}
               />
             </main>
           </div>

@@ -9,7 +9,9 @@ export default function ConsolePanel({
   activePane, 
   setActivePane, 
   logs, 
-  onClear 
+  onClear,
+  rconsoleInputExpected,
+  onRconsoleSubmit
 }) {
   const bodyRef = useRef(null);
 
@@ -100,6 +102,24 @@ export default function ConsolePanel({
             <div className="text-text-muted italic">No logs available.</div>
           )}
         </div>
+
+        {activePane === 'rconsole' && rconsoleInputExpected && (
+          <div className="flex items-center gap-2 mt-2 border-t border-border-color/30 pt-2">
+            <span className="text-accent-blue font-bold">&gt;&gt;</span>
+            <input
+              type="text"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && e.target.value.trim() !== '') {
+                  onRconsoleSubmit(e.target.value);
+                  e.target.value = '';
+                }
+              }}
+              placeholder="Type input for Roblox..."
+              className="bg-transparent border-none text-text-primary focus:outline-none flex-grow font-mono text-[11px] h-5 w-full placeholder-text-muted"
+              autoFocus
+            />
+          </div>
+        )}
       </div>
     </motion.section>
   );

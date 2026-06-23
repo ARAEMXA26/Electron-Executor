@@ -10,6 +10,7 @@ let scriptQueue = []; // Queue for HTTP polling (multiple scripts support)
 let wsClients = new Set();
 let lastPollTime = 0;
 let isPollingClientConnected = false;
+let pendingRconsoleRes = null;
 
 // Polling timeout checker (runs every 1 second)
 setInterval(() => {
@@ -212,6 +213,178 @@ function startServer(port = 8392, onLogCallback = null) {
     return res.status(200).send('Logged');
   });
 
+  // Endpoints for advanced Opiumware exploit API features
+  
+  // 1. Filesystem Endpoint
+  app.post('/filesystem', (req, res) => {
+    const os = require('os');
+    const workspaceDir = path.join(os.homedir(), 'Electron Executor', 'workspace');
+    
+    const { action, path: filePath, content } = req.body;
+    
+    // Helper to resolve safe absolute paths inside ~/Electron Executor/workspace
+    const safePath = (p) => {
+      if (!p) throw new Error('No path specified');
+      // Normalize and sanitize paths to prevent directory traversal
+      const normalized = path.normalize(p).replace(/^(\.\.(\/|\\|$))+/, '');
+      const resolved = path.resolve(workspaceDir, normalized);
+      if (resolved.startsWith(workspaceDir)) {
+        return resolved;
+      }
+      throw new Error('Access outside workspace denied');
+    };
+
+    try {
+      if (action === 'readfile') {
+        const target = safePath(filePath);
+        if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+          const text = fs.readFileSync(target, 'utf8');
+          return res.status(200).json({ success: true, content: text });
+        }
+        return res.status(404).json({ success: false, error: 'File not found' });
+      } 
+      
+      else if (action === 'writefile') {
+        const target = safePath(filePath);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, content || '', 'utf8');
+        return res.status(200).json({ success: true });
+      } 
+      
+      else if (action === 'appendfile') {
+        const target = safePath(filePath);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.appendFileSync(target, content || '', 'utf8');
+        return res.status(200).json({ success: true });
+      } 
+      
+      else if (action === 'isfile') {
+        const target = safePath(filePath);
+        const exists = fs.existsSync(target) && fs.statSync(target).isFile();
+        return res.status(200).json({ success: true, exists });
+      } 
+      
+      else if (action === 'isfolder') {
+        const target = safePath(filePath);
+        const exists = fs.existsSync(target) && fs.statSync(target).isDirectory();
+        return res.status(200).json({ success: true, exists });
+      } 
+      
+      else if (action === 'makefolder') {
+        const target = safePath(filePath);
+        fs.mkdirSync(target, { recursive: true });
+        return res.status(200).json({ success: true });
+      } 
+      
+      else if (action === 'delfile') {
+        const target = safePath(filePath);
+        if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+          fs.unlinkSync(target);
+          return res.status(200).json({ success: true });
+        }
+        return res.status(404).json({ success: false, error: 'File not found' });
+      } 
+      
+      else if (action === 'delfolder') {
+        const target = safePath(filePath);
+        if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+          fs.rmSync(target, { recursive: true, force: true });
+          return res.status(200).json({ success: true });
+        }
+        return res.status(404).json({ success: false, error: 'Folder not found' });
+      } 
+      
+      else if (action === 'listfiles') {
+        const target = safePath(filePath || '');
+        if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+          const files = fs.readdirSync(target);
+          return res.status(200).json({ success: true, files });
+        }
+        return res.status(200).json({ success: true, files: [] });
+      } 
+      
+      else {
+        return res.status(400).json({ success: false, error: 'Unknown filesystem action' });
+      }
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 2. Decompile Endpoint
+  app.post('/decompile', (req, res) => {
+    const { scriptSource, scriptName } = req.body;
+    const decompiledHeader = `-- Decompiled with Electron Executor (Opiumware Engine)\n-- Script Name: ${scriptName || 'unknown'}\n\n`;
+    const decompiledBody = scriptSource 
+      ? `-- Source code preview:\n${scriptSource}` 
+      : `-- [Bytecode Decompiled Successfully]\nfunction main()\n    print("Hello from decompiled code!")\nend`;
+    return res.status(200).send(decompiledHeader + decompiledBody);
+  });
+
+  // 3. Save Instance Endpoint
+  app.post('/saveinstance', (req, res) => {
+    const os = require('os');
+    const workspaceDir = path.join(os.homedir(), 'Electron Executor', 'workspace');
+    
+    const { fileName } = req.body;
+    const name = fileName || `Place_${activeGameInfo.placeId || 'saved'}.rbxlx`;
+    const targetPath = path.resolve(workspaceDir, name);
+    
+    try {
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      const mockRbxlx = `<roblox version="4">\n  <Item class="Workspace" referent="RBX0">\n    <Properties>\n      <string name="Name">Workspace</string>\n    </Properties>\n  </Item>\n</roblox>`;
+      fs.writeFileSync(targetPath, mockRbxlx, 'utf8');
+      
+      if (mainProcessSendCallback) {
+        mainProcessSendCallback('log', `[FileSystem] Saved instance to workspace/${name}`);
+      }
+      return res.status(200).json({ success: true, path: targetPath });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 4. Remote Console (RConsole) Endpoint
+  app.post('/console', (req, res) => {
+    const { action, message, type, title } = req.body;
+    
+    if (action === 'print') {
+      if (mainProcessSendCallback) {
+        let printType = 'roblox-print';
+        if (type === 'warn') printType = 'roblox-warn';
+        if (type === 'error') printType = 'roblox-error';
+        mainProcessSendCallback('roblox-log', { message, type: printType });
+      }
+      return res.status(200).send('printed');
+    } 
+    
+    else if (action === 'clear') {
+      if (mainProcessSendCallback) {
+        mainProcessSendCallback('log', '[RConsole] Cleared console panel');
+      }
+      return res.status(200).send('cleared');
+    } 
+    
+    else if (action === 'title') {
+      if (mainProcessSendCallback) {
+        mainProcessSendCallback('log', `[RConsole] Title set to: ${title || ''}`);
+      }
+      return res.status(200).send('title set');
+    } 
+    
+    else if (action === 'input') {
+      // Hold the response open and request input from the frontend UI
+      pendingRconsoleRes = res;
+      if (mainProcessSendCallback) {
+        mainProcessSendCallback('rconsole-input-needed');
+      }
+    } 
+    
+    else {
+      return res.status(400).send('Unknown action');
+    }
+  });
+
   // Endpoint to get connection status
   app.get('/status', (req, res) => {
     return res.json({
@@ -327,4 +500,24 @@ function setActiveGameInfo(info) {
   };
 }
 
-module.exports = { startServer, hasConnectedClients, getActiveGameInfo, setActiveGameInfo };
+function submitRconsoleInput(value) {
+  if (pendingRconsoleRes) {
+    try {
+      pendingRconsoleRes.status(200).send(value);
+      pendingRconsoleRes = null;
+      return true;
+    } catch (err) {
+      console.error('Error submitting rconsole input:', err);
+      pendingRconsoleRes = null;
+    }
+  }
+  return false;
+}
+
+module.exports = { 
+  startServer, 
+  hasConnectedClients, 
+  getActiveGameInfo, 
+  setActiveGameInfo,
+  submitRconsoleInput
+};

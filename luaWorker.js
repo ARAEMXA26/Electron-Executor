@@ -313,6 +313,99 @@ async function run() {
     lua.global.set('identifyexecutor', () => ['Electron Executor Simulator', 'v1.0.0']);
     lua.global.set('getexecutorname', () => 'Electron Executor Simulator');
 
+    // Real Node.js filesystem helper bindings for the built-in Lua Simulator
+    const fs = require('fs');
+    const os = require('os');
+    const workspaceDir = path.join(os.homedir(), 'Electron Executor', 'workspace');
+    if (!fs.existsSync(workspaceDir)) {
+      fs.mkdirSync(workspaceDir, { recursive: true });
+    }
+
+    const getSafePath = (p) => {
+      if (!p) return workspaceDir;
+      const normalized = path.normalize(p).replace(/^(\.\.(\/|\\|$))+/, '');
+      return path.resolve(workspaceDir, normalized);
+    };
+
+    lua.global.set('__js_readfile', (p) => {
+      const target = getSafePath(p);
+      if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+        return fs.readFileSync(target, 'utf8');
+      }
+      throw new Error(`File not found: ${p}`);
+    });
+
+    lua.global.set('__js_writefile', (p, content) => {
+      const target = getSafePath(p);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, content || '', 'utf8');
+      return true;
+    });
+
+    lua.global.set('__js_appendfile', (p, content) => {
+      const target = getSafePath(p);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.appendFileSync(target, content || '', 'utf8');
+      return true;
+    });
+
+    lua.global.set('__js_isfile', (p) => {
+      const target = getSafePath(p);
+      return fs.existsSync(target) && fs.statSync(target).isFile();
+    });
+
+    lua.global.set('__js_isfolder', (p) => {
+      const target = getSafePath(p);
+      return fs.existsSync(target) && fs.statSync(target).isDirectory();
+    });
+
+    lua.global.set('__js_makefolder', (p) => {
+      const target = getSafePath(p);
+      fs.mkdirSync(target, { recursive: true });
+      return true;
+    });
+
+    lua.global.set('__js_delfile', (p) => {
+      const target = getSafePath(p);
+      if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+        fs.unlinkSync(target);
+        return true;
+      }
+      return false;
+    });
+
+    lua.global.set('__js_delfolder', (p) => {
+      const target = getSafePath(p);
+      if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+        fs.rmSync(target, { recursive: true, force: true });
+        return true;
+      }
+      return false;
+    });
+
+    lua.global.set('__js_listfiles', (p) => {
+      const target = getSafePath(p);
+      if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
+        return fs.readdirSync(target);
+      }
+      return [];
+    });
+
+    // Node.js crypto helpers for built-in Lua Simulator
+    const crypto = require('crypto');
+    lua.global.set('__js_crypt_b64encode', (str) => Buffer.from(str || '').toString('base64'));
+    lua.global.set('__js_crypt_b64decode', (str) => Buffer.from(str || '', 'base64').toString('utf8'));
+    lua.global.set('__js_crypt_hash', (str, algo) => {
+      try {
+        const hash = crypto.createHash(algo || 'sha256');
+        hash.update(str || '');
+        return hash.digest('hex');
+      } catch (e) {
+        return '';
+      }
+    });
+    lua.global.set('__js_crypt_generatekey', () => crypto.randomBytes(32).toString('base64'));
+
     const requestHandler = (options) => {
       const url = options?.Url || options?.url;
       const method = options?.Method || options?.method || 'GET';
@@ -665,7 +758,103 @@ async function run() {
       function hookfunction(old_func, new_func)
         return new_func
       end
-      
+      function detourfunction(old_func, new_func)
+        return new_func
+      end
+      function detourfunc(old_func, new_func)
+        return new_func
+      end
+      function getnamecallmethod() return "Index" end
+      function setnamecallmethod(method) return true end
+
+      -- Identity
+      function getidentity() return 8 end
+      function setidentity(level) return true end
+      function getthreadidentity() return 8 end
+      function setthreadidentity(level) return true end
+      function get_thread_identity() return 8 end
+      function get_thread_context() return 8 end
+
+      -- Drawing
+      Drawing = {
+        new = function(className)
+          local drawObj = {
+            Visible = true,
+            ZIndex = 0,
+            Transparency = 1,
+            Color = Color3.new(1, 1, 1),
+            Remove = function() end,
+            Destroy = function() end
+          }
+          if className == "Line" then
+            drawObj.From = Vector2.new(0, 0)
+            drawObj.To = Vector2.new(0, 0)
+            drawObj.Thickness = 1
+          elseif className == "Text" then
+            drawObj.Text = ""
+            drawObj.Size = 12
+            drawObj.Center = false
+            drawObj.Outline = false
+            drawObj.OutlineColor = Color3.new(0, 0, 0)
+            drawObj.Position = Vector2.new(0, 0)
+          elseif className == "Circle" then
+            drawObj.Position = Vector2.new(0, 0)
+            drawObj.Radius = 10
+            drawObj.Thickness = 1
+            drawObj.Filled = false
+          elseif className == "Square" then
+            drawObj.Position = Vector2.new(0, 0)
+            drawObj.Size = Vector2.new(0, 0)
+            drawObj.Thickness = 1
+            drawObj.Filled = false
+          end
+          print("[Drawing] Created simulator drawing object: " .. className)
+          return drawObj
+        end,
+        Fonts = { UI = 0, System = 1, Plex = 2, Monospace = 3 }
+      }
+
+      -- Decompiler mock
+      function decompile(scriptObj)
+        return "-- Decompiled Script Source Preview (Simulator Mode)\nfunction main()\n  print('Hello')\nend"
+      end
+      function decompilefunction(func)
+        return "-- Decompiled Function (Simulator Mode)"
+      end
+
+      -- Crypt library
+      crypt = {
+        base64encode = function(str) return __js_crypt_b64encode(str) end,
+        base64decode = function(str) return __js_crypt_b64decode(str) end,
+        hash = function(str, algo) return __js_crypt_hash(str, algo) end,
+        encrypt = function(data, key) return data end,
+        decrypt = function(data, key) return data end,
+        generatekey = function() return __js_crypt_generatekey() end
+      }
+
+      -- WebSocket client mock
+      WebSocket = {
+        connect = function(url)
+          print("[WebSocket] Simulator connected to: " .. tostring(url))
+          local ws = {
+            Send = function(self, msg) print("[WebSocket Client Send] " .. tostring(msg)) end,
+            Close = function(self) print("[WebSocket Client Closed]") end
+          }
+          ws.OnMessage = { Connect = function(self, cb) end }
+          ws.OnClose = { Connect = function(self, cb) end }
+          return ws
+        end
+      }
+
+      -- Remote Console (RConsole) mock
+      rconsoleprint = function(msg) print("[RConsole] " .. tostring(msg)) end
+      rconsolewarn = function(msg) warn("[RConsole Warning] " .. tostring(msg)) end
+      rconsoleerr = function(msg) error("[RConsole Error] " .. tostring(msg)) end
+      rconsoleclear = function() print("[RConsole] Cleared console") end
+      rconsoleclose = function() print("[RConsole] Closed console") end
+      rconsoletitle = function(t) print("[RConsole Title] " .. tostring(t)) end
+      rconsoleinput = function() return "simulator_input" end
+
       http = {
         request = request
       }
@@ -676,43 +865,42 @@ async function run() {
           print("[Notification] " .. tostring(options.Title) .. ": " .. tostring(options.Content))
         end
       }
-      
-      local virtual_files = {}
-      
+
+      -- Real file operations using Node.js path bindings
       function readfile(filename)
-        return virtual_files[filename] or ""
+        return __js_readfile(filename)
       end
       
       function writefile(filename, content)
-        virtual_files[filename] = content
+        __js_writefile(filename, content)
       end
       
       function appendfile(filename, content)
-        virtual_files[filename] = (virtual_files[filename] or "") .. content
+        __js_appendfile(filename, content)
       end
       
       function isfile(filename)
-        return virtual_files[filename] ~= nil
+        return __js_isfile(filename)
+      end
+
+      function isfolder(foldername)
+        return __js_isfolder(foldername)
       end
       
-      function listfiles()
-        local files = {}
-        for k, _ in pairs(virtual_files) do
-          table.insert(files, k)
-        end
-        return files
+      function listfiles(foldername)
+        return __js_listfiles(foldername)
       end
       
       function makefolder(foldername)
-        return true
+        return __js_makefolder(foldername)
       end
       
       function delfolder(foldername)
-        return true
+        return __js_delfolder(foldername)
       end
       
       function delfile(filename)
-        virtual_files[filename] = nil
+        return __js_delfile(filename)
       end
       
       function wait(seconds)

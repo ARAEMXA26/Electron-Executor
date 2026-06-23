@@ -6,7 +6,6 @@ const { exec } = require('child_process');
 const { startServer, hasConnectedClients, getActiveGameInfo } = require('./server');
 const db = require('./db');
 const emailService = require('./emailService');
-const luaEngine = require('./luaEngine');
 
 let mainWindow = null;
 let serverInstance = null;
@@ -93,6 +92,36 @@ function installRobloxHook() {
       clientSettingsJson,
       `Injected ClientAppSettings.json into Roblox.app (${robloxAppPath})`
     );
+
+    // ── 4. Inject libOpiumware.dylib & patched libmimalloc.3.dylib ────
+    const binDir = path.join(__dirname, 'bin');
+    if (fs.existsSync(binDir)) {
+      const srcDylib = path.join(binDir, 'libOpiumware.dylib');
+      const srcMimalloc = path.join(binDir, 'libmimalloc.3.dylib');
+      const targetDylib = path.join(robloxAppPath, 'Contents', 'Resources', 'libOpiumware.dylib');
+      const targetMimalloc = path.join(robloxAppPath, 'Contents', 'MacOS', 'libmimalloc.3.dylib');
+      
+      if (fs.existsSync(srcDylib) && fs.existsSync(srcMimalloc)) {
+        try {
+          fs.mkdirSync(path.dirname(targetDylib), { recursive: true });
+          fs.copyFileSync(srcDylib, targetDylib);
+          fs.copyFileSync(srcMimalloc, targetMimalloc);
+          
+          // Remove quarantine flags
+          const { execSync } = require('child_process');
+          try { execSync(`xattr -rd com.apple.quarantine "${targetDylib}" 2>/dev/null || true`); } catch (e) {}
+          try { execSync(`xattr -rd com.apple.quarantine "${targetMimalloc}" 2>/dev/null || true`); } catch (e) {}
+          
+          console.log('[Hook ✓] Injected libOpiumware.dylib and patched libmimalloc.3.dylib into Roblox.app');
+          successCount += 2;
+        } catch (err) {
+          console.warn(`[Hook ✗] Failed to inject dylibs: ${err.message}`);
+          failCount += 2;
+        }
+      } else {
+        console.warn('[Hook ⚠] Injection binaries not found in bin/ folder');
+      }
+    }
 
     // Re-sign patched Roblox.app to prevent Gatekeeper blocks
     try {
@@ -392,10 +421,7 @@ app.whenReady().then(() => {
     }
   }
 
-  // 1. Run automatic script hook copy on startup
-  installRobloxHook();
-
-  // 2. Start local express/websocket server
+  // 1. Start local express/websocket server
   serverInstance = startServer(8392, (type, data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (type === 'log') {
@@ -406,6 +432,8 @@ app.whenReady().then(() => {
         mainWindow.webContents.send('client-status', data);
       } else if (type === 'roblox-handshake') {
         syncActiveGameToDbAndUi(data);
+      } else if (type === 'rconsole-input-needed') {
+        mainWindow.webContents.send('rconsole-input-needed');
       }
     }
   });
@@ -478,6 +506,54 @@ app.whenReady().then(() => {
     return robloxRunningState;
   });
 
+  ipcMain.handle('check-dylib-status', () => {
+    const homeDir = os.homedir();
+    let robloxAppPath = '/Applications/Roblox.app';
+    if (!fs.existsSync(robloxAppPath)) {
+      const userRoblox = path.join(homeDir, 'Applications', 'Roblox.app');
+      if (fs.existsSync(userRoblox)) {
+        robloxAppPath = userRoblox;
+      }
+    }
+
+    if (!fs.existsSync(robloxAppPath)) {
+      return { status: 'not_installed', error: 'Roblox is not installed' };
+    }
+
+    const dylibPath = path.join(robloxAppPath, 'Contents', 'Resources', 'libOpiumware.dylib');
+    const mimallocPath = path.join(robloxAppPath, 'Contents', 'MacOS', 'libmimalloc.3.dylib');
+
+    if (!fs.existsSync(dylibPath)) {
+      return { status: 'not_injected', reason: 'libOpiumware.dylib is missing' };
+    }
+
+    if (!fs.existsSync(mimallocPath)) {
+      return { status: 'not_injected', reason: 'libmimalloc.3.dylib is missing' };
+    }
+
+    // Verify if libmimalloc.3.dylib is patched to load libOpiumware.dylib
+    try {
+      const { execSync } = require('child_process');
+      const otoolOut = execSync(`otool -L "${mimallocPath}"`, { encoding: 'utf8' });
+      if (otoolOut.includes('libOpiumware.dylib')) {
+        return { status: 'injected', path: dylibPath };
+      } else {
+        return { status: 'not_injected', reason: 'libmimalloc.3.dylib is not patched' };
+      }
+    } catch (err) {
+      return { status: 'unknown', reason: `Verification failed: ${err.message}` };
+    }
+  });
+
+  ipcMain.handle('inject-dylib', () => {
+    try {
+      installRobloxHook();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
   createWindow();
 
   app.on('activate', () => {
@@ -544,36 +620,10 @@ ipcMain.on('execute-script', (event, { scriptContent, scriptName }) => {
     req.write(postData);
     req.end();
   } else {
-    // Mode 2: Run via built-in Lua engine in a Worker Thread (non-blocking)
-    console.log(`[Execute] No external clients connected. Using built-in Lua engine (Worker Thread) for: ${scriptName}`);
-    
+    console.log(`[Execute] No external clients connected. Cannot execute script: ${scriptName}`);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('server-log', `[Built-in Simulator] Menjalankan: ${scriptName} (Catatan: Berjalan di Simulator karena tidak ada klien Roblox yang terhubung)`);
+      mainWindow.webContents.send('server-log', `[Execute Error] Gagal mengeksekusi script: "${scriptName || 'unnamed.lua'}" karena Roblox tidak terhubung.`);
     }
-
-    const gameInfo = getActiveGameInfo();
-    
-    // Use .then() instead of await to avoid blocking the main process event loop
-    luaEngine.executeLua(scriptContent, scriptName, gameInfo, (message, type) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('lua-output', { message, type });
-      }
-    }).then((result) => {
-      if (result.success) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('server-log', `[Built-in Simulator] Selesai: ${scriptName}`);
-        }
-      } else {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('server-log', `[Built-in Simulator] Gagal: ${result.error}`);
-        }
-      }
-    }).catch((err) => {
-      console.error('[Execute] Lua engine error:', err);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('server-log', `[Built-in Simulator] Fatal error: ${err.message}`);
-      }
-    });
   }
 });
 
@@ -635,47 +685,10 @@ ipcMain.handle('launch-roblox', async () => {
 });
 
 ipcMain.handle('attach-executor', async () => {
-  try {
-    // Step 1: Quick local patching (immediate)
-    installRobloxHook();
-
-    // Step 2: Run full setup-roblox.sh for complete injection (download + patch)
-    const setupScript = path.join(__dirname, 'setup-roblox.sh');
-    if (fs.existsSync(setupScript)) {
-      return new Promise((resolve) => {
-        const { execFile } = require('child_process');
-        
-        // Make it executable
-        try { fs.chmodSync(setupScript, '755'); } catch(e) {}
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('server-log', '[Injector] Menjalankan setup-roblox.sh — menghapus Roblox lama, download ulang, dan inject...');
-        }
-
-        execFile('bash', [setupScript, '--from-installer'], { timeout: 300000 }, (error, stdout, stderr) => {
-          if (error) {
-            console.error('[Attach] setup-roblox.sh error:', error.message);
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('server-log', `[Injector] Setup selesai dengan warning: ${error.message}`);
-            }
-            // Still return success since installRobloxHook ran fine
-            resolve({ success: true, warning: error.message });
-          } else {
-            console.log('[Attach] setup-roblox.sh completed successfully');
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('server-log', '[Injector] ✓ Roblox berhasil di-reinstall dan di-inject. Silakan buka Roblox.');
-            }
-            resolve({ success: true });
-          }
-        });
-      });
-    } else {
-      // setup-roblox.sh not found, rely on installRobloxHook only
-      return { success: true, warning: 'setup-roblox.sh not found, used quick patching only' };
-    }
-  } catch (err) {
-    return { success: false, error: err.message };
-  }
+  return { 
+    success: false, 
+    error: 'Injeksi manual dari UI dinonaktifkan. Silakan jalankan `./setup-roblox.sh` di Terminal untuk melakukan instalasi dan injeksi.' 
+  };
 });
 
 // IPC handlers for custom window controls
@@ -995,4 +1008,9 @@ ipcMain.handle('db-get-linked-user', async () => {
 ipcMain.handle('db-unlink-device', async () => {
   const deviceId = db.getDeviceId();
   return await db.unlinkDevice(deviceId);
+});
+
+ipcMain.on('rconsole-input-submit', (event, value) => {
+  const { submitRconsoleInput } = require('./server');
+  submitRconsoleInput(value);
 });

@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRobloxProcessStatus: (callback) => ipcRenderer.on('roblox-process-status', (event, value) => callback(value)),
   onRobloxHandshake: (callback) => ipcRenderer.on('roblox-handshake', (event, value) => callback(value)),
   onLuaOutput: (callback) => ipcRenderer.on('lua-output', (event, value) => callback(value)),
+  checkDylibStatus: () => ipcRenderer.invoke('check-dylib-status'),
+  injectDylib: () => ipcRenderer.invoke('inject-dylib'),
   
   // Database handlers
   dbInit: (config) => ipcRenderer.invoke('db-init', config),
@@ -45,5 +47,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Custom Window Controls
   closeWindow: () => ipcRenderer.send('window-close'),
   minimizeWindow: () => ipcRenderer.send('window-minimize'),
-  maximizeWindow: () => ipcRenderer.send('window-maximize')
+  maximizeWindow: () => ipcRenderer.send('window-maximize'),
+  
+  // RConsole Input Flow
+  onRconsoleInputNeeded: (callback) => ipcRenderer.on('rconsole-input-needed', (event) => callback()),
+  rconsoleInputSubmit: (value) => ipcRenderer.send('rconsole-input-submit', value)
 });
