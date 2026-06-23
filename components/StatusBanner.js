@@ -3,7 +3,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-export default function StatusBanner({ robloxProcess, activeGame, dylibStatus, onInject }) {
+export default function StatusBanner({ robloxProcess, activeGame }) {
   const isRobloxRunning = robloxProcess?.running;
   const robloxType = robloxProcess?.type || 'Roblox Client';
   
@@ -35,28 +35,6 @@ export default function StatusBanner({ robloxProcess, activeGame, dylibStatus, o
             <span className="w-2 h-2 rounded-full bg-red-500" />
           )}
           <span>{isRobloxRunning ? `${robloxType} Running` : `${robloxType} Closed`}</span>
-        </span>
-
-        {/* Dylib Injection Status */}
-        <span className="flex items-center gap-1.5 border-l border-border-color/50 pl-3">
-          <span className="text-text-muted">Injection:</span>
-          {dylibStatus?.status === 'injected' ? (
-            <span className="text-emerald-400 font-medium flex items-center gap-1">
-              ✓ Injected (Opiumware)
-            </span>
-          ) : dylibStatus?.status === 'not_injected' ? (
-            <button
-              onClick={onInject}
-              className="text-amber-400 font-medium flex items-center gap-1 cursor-pointer hover:underline bg-transparent border-none p-0 outline-none"
-              title="Click to inject/attach executor"
-            >
-              ✗ Not Injected (Click to Attach)
-            </button>
-          ) : dylibStatus?.status === 'not_installed' ? (
-            <span className="text-rose-400">Roblox Not Installed</span>
-          ) : (
-            <span className="text-text-muted font-light">Checking...</span>
-          )}
         </span>
       </div>
 

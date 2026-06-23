@@ -76,7 +76,6 @@ export default function MainPage() {
   const [robloxProcess, setRobloxProcess] = useState({ running: false, type: null });
   const [connectionStatus, setConnectionStatus] = useState({ connected: false, clients: 0 });
   const [activeGame, setActiveGame] = useState({ placeId: null, gameName: null, jobId: null, executor: null });
-  const [dylibStatus, setDylibStatus] = useState({ status: 'unknown' });
   const [rconsoleInputExpected, setRconsoleInputExpected] = useState(false);
 
   // Tab State
@@ -347,24 +346,6 @@ export default function MainPage() {
       setRobloxProcess(process);
     });
   }, [mounted]);
-
-  // Dylib Status Checker and Poller
-  useEffect(() => {
-    if (!mounted || !window.electronAPI || !window.electronAPI.checkDylibStatus) return;
-
-    const checkDylib = async () => {
-      try {
-        const status = await window.electronAPI.checkDylibStatus();
-        setDylibStatus(status);
-      } catch (err) {
-        console.error('Failed to check dylib status:', err);
-      }
-    };
-
-    checkDylib();
-    const interval = setInterval(checkDylib, 4000);
-    return () => clearInterval(interval);
-  }, [mounted, robloxProcess]);
 
   // Periodically poll statistics to keep the device cloud status updated in real-time
   useEffect(() => {
@@ -657,38 +638,6 @@ export default function MainPage() {
     }
   };
 
-  const handleAttach = async () => {
-    if (!window.electronAPI || !window.electronAPI.attachExecutor) return;
-
-    appendLog('Menginjeksi dylib ke Roblox...', 'info-log', 'terminal');
-    setToast({
-      show: true,
-      message: 'Menginjeksi dylib...',
-      type: 'info'
-    });
-
-    const res = await window.electronAPI.attachExecutor();
-    if (res.success) {
-      appendLog('Dylib berhasil terinjeksi!', 'success-log', 'terminal');
-      setToast({
-        show: true,
-        message: 'Berhasil diinjeksi!',
-        type: 'success'
-      });
-      // Force refresh dylib status
-      if (window.electronAPI.checkDylibStatus) {
-        const status = await window.electronAPI.checkDylibStatus();
-        setDylibStatus(status);
-      }
-    } else {
-      appendLog(`Gagal menginjeksi dylib: ${res.error}`, 'roblox-error', 'terminal');
-      setToast({
-        show: true,
-        message: `Gagal menginjeksi: ${res.error}`,
-        type: 'error'
-      });
-    }
-  };
 
   const handleLaunchRoblox = async () => {
     if (!window.electronAPI) return;
@@ -786,8 +735,6 @@ export default function MainPage() {
           <StatusBanner 
             robloxProcess={robloxProcess}
             activeGame={activeGame}
-            dylibStatus={dylibStatus}
-            onInject={handleAttach}
           />
 
           <div className="flex flex-1 w-full overflow-hidden relative">
