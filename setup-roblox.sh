@@ -103,7 +103,7 @@ success "Created workspace directory structure under $ELECTRON_DIR"
 add_result "${GREEN}✓${NC} Workspace: Initialized at ~/Electron Executor"
 
 
-# ── Check if Roblox is already installed and patched ────────────────
+# ── Check if Roblox is already installed ────────────────────────────
 SKIP_ROBLOX_REINSTALL=false
 DETECTED_ROBLOX_PATH=""
 if [ -d "/Applications/Roblox.app" ]; then
@@ -112,8 +112,8 @@ elif [ -d "$HOME/Applications/Roblox.app" ]; then
   DETECTED_ROBLOX_PATH="$HOME/Applications/Roblox.app"
 fi
 
-if [ -n "$DETECTED_ROBLOX_PATH" ] && [ -f "$DETECTED_ROBLOX_PATH/Contents/MacOS/ClientSettings/ClientAppSettings.json" ] && [ -f "$HOME/Library/Application Support/Roblox/ClientSettings/ClientAppSettings.json" ]; then
-  info "Roblox already installed and patched. Skipping download/re-installation."
+if [ -n "$DETECTED_ROBLOX_PATH" ]; then
+  info "Roblox is already installed. Skipping download/re-installation."
   SKIP_ROBLOX_REINSTALL=true
 fi
 
@@ -373,35 +373,6 @@ fi
 
 PATCH_COUNT=0
 
-if [ "$SKIP_ROBLOX_REINSTALL" = false ]; then
-  if [ -n "$ROBLOX_PATH" ] && [ -d "$ROBLOX_PATH" ]; then
-    info "Patching Roblox at: $ROBLOX_PATH"
-
-    # 5a. Create ClientSettings inside Roblox.app bundle
-    ROBLOX_CLIENT_SETTINGS_DIR="$ROBLOX_PATH/Contents/MacOS/ClientSettings"
-    mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" 2>/dev/null || sudo mkdir -p "$ROBLOX_CLIENT_SETTINGS_DIR" 2>/dev/null
-    
-    if echo "$CLIENT_SETTINGS_JSON" > "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" 2>/dev/null; then
-      success "Injected ClientAppSettings.json into Roblox.app bundle"
-      PATCH_COUNT=$((PATCH_COUNT + 1))
-    else
-      echo "$CLIENT_SETTINGS_JSON" | sudo tee "$ROBLOX_CLIENT_SETTINGS_DIR/ClientAppSettings.json" > /dev/null 2>&1
-      success "Injected ClientAppSettings.json into Roblox.app bundle (sudo)"
-      PATCH_COUNT=$((PATCH_COUNT + 1))
-    fi
-
-    # 5c. Re-sign the patched Roblox.app to prevent Gatekeeper issues
-    info "Re-signing patched Roblox.app..."
-    codesign --force --deep --sign - "$ROBLOX_PATH" 2>/dev/null || true
-    success "Ad-hoc code signature applied to patched Roblox"
-    PATCH_COUNT=$((PATCH_COUNT + 1))
-  else
-    warn "Roblox.app not found — skipping bundle patching"
-  fi
-else
-  info "Skipping: Roblox bundle patching and codesign skipped (Already patched)"
-fi
-
 # 5b. Copy loader.lua into Electron Executor autoexec
 AUTOEXEC_DIR="$HOME/Electron Executor/autoexec"
 mkdir -p "$AUTOEXEC_DIR" 2>/dev/null
@@ -460,14 +431,7 @@ else
   VERIFY_FAIL=$((VERIFY_FAIL + 1))
 fi
 
-# Verify ClientAppSettings.json in bundle
-if [ -n "$ROBLOX_PATH" ] && [ -f "$ROBLOX_PATH/Contents/MacOS/ClientSettings/ClientAppSettings.json" ]; then
-  success "ClientAppSettings.json verified inside Roblox bundle"
-  VERIFY_PASS=$((VERIFY_PASS + 1))
-else
-  fail_soft "ClientAppSettings.json not found in Roblox bundle"
-  VERIFY_FAIL=$((VERIFY_FAIL + 1))
-fi
+
 
 # Verify user-level ClientAppSettings
 if [ -f "$ROBLOX_USER_SETTINGS_DIR/ClientAppSettings.json" ]; then
