@@ -222,7 +222,7 @@ fi
 
 # Packages the Electron app dynamically based on the current architecture
 info "Packaging Electron app via electron-packager..."
-npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist --icon=public/logo.icns --ignore='^/dist($|/)|^/\.git($|/)|^/\.next/cache($|/)' 2>&1 | tail -3 || fail "Failed to package Electron application."
+npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist --icon=public/logo.icns --app-bundle-id=com.araemxa.electron-executor --ignore='^/dist($|/)|^/\.git($|/)|^/\.next/cache($|/)' 2>&1 | tail -3 || fail "Failed to package Electron application."
 
 # Find the generated app path
 APP_PATH=$(find dist -maxdepth 2 -name "Electron Executor.app" | head -n 1)

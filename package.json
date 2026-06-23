@@ -1,6 +1,6 @@
 {
   "name": "electron-executor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Premium Lua Script Executor for Roblox on macOS",
   "main": "main.js",
   "scripts": {
