@@ -202,17 +202,37 @@ cd "$INSTALL_DIR"
 info "Compiling production build..."
 npm run build 2>&1 | tail -3 || fail "Failed to compile production build."
 
+# Ensure macOS application icon exists
+if [ ! -f "public/logo.icns" ] && [ -f "public/logo.png" ]; then
+  info "Generating macOS application icon..."
+  mkdir -p public/logo.iconset
+  sips -z 16 16     public/logo.png --out public/logo.iconset/icon_16x16.png &>/dev/null
+  sips -z 32 32     public/logo.png --out public/logo.iconset/icon_16x16@2x.png &>/dev/null
+  sips -z 32 32     public/logo.png --out public/logo.iconset/icon_32x32.png &>/dev/null
+  sips -z 64 64     public/logo.png --out public/logo.iconset/icon_32x32@2x.png &>/dev/null
+  sips -z 128 128   public/logo.png --out public/logo.iconset/icon_128x128.png &>/dev/null
+  sips -z 256 256   public/logo.png --out public/logo.iconset/icon_128x128@2x.png &>/dev/null
+  sips -z 256 256   public/logo.png --out public/logo.iconset/icon_256x256.png &>/dev/null
+  sips -z 512 512   public/logo.png --out public/logo.iconset/icon_256x256@2x.png &>/dev/null
+  sips -z 512 512   public/logo.png --out public/logo.iconset/icon_512x512.png &>/dev/null
+  sips -z 1024 1024 public/logo.png --out public/logo.iconset/icon_512x512@2x.png &>/dev/null
+  iconutil -c icns public/logo.iconset
+  rm -rf public/logo.iconset
+fi
+
 # Packages the Electron app dynamically based on the current architecture
 info "Packaging Electron app via electron-packager..."
-npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist --ignore='^/dist($|/)|^/\.git($|/)|^/\.next/cache($|/)' 2>&1 | tail -3 || fail "Failed to package Electron application."
+npx electron-packager . "Electron Executor" --platform=darwin --overwrite --out=dist --icon=public/logo.icns --ignore='^/dist($|/)|^/\.git($|/)|^/\.next/cache($|/)' 2>&1 | tail -3 || fail "Failed to package Electron application."
 
-
-info "Installing to /Applications..."
 # Find the generated app path
 APP_PATH=$(find dist -maxdepth 2 -name "Electron Executor.app" | head -n 1)
 if [ -z "$APP_PATH" ]; then
   fail "Failed to find compiled Electron Executor.app in dist/"
 fi
+
+# Clean up unnecessary localization resources (.lproj) to keep Resources folder clean
+info "Cleaning up unnecessary resources (localization files)..."
+find "$APP_PATH/Contents/Resources" -name "*.lproj" -exec rm -rf {} + 2>/dev/null || true
 
 # Clean previous install
 rm -rf "/Applications/Electron Executor.app" 2>/dev/null || true
