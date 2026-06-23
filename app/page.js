@@ -657,6 +657,39 @@ export default function MainPage() {
     }
   };
 
+  const handleAttach = async () => {
+    if (!window.electronAPI || !window.electronAPI.attachExecutor) return;
+
+    appendLog('Menginjeksi dylib ke Roblox...', 'info-log', 'terminal');
+    setToast({
+      show: true,
+      message: 'Menginjeksi dylib...',
+      type: 'info'
+    });
+
+    const res = await window.electronAPI.attachExecutor();
+    if (res.success) {
+      appendLog('Dylib berhasil terinjeksi!', 'success-log', 'terminal');
+      setToast({
+        show: true,
+        message: 'Berhasil diinjeksi!',
+        type: 'success'
+      });
+      // Force refresh dylib status
+      if (window.electronAPI.checkDylibStatus) {
+        const status = await window.electronAPI.checkDylibStatus();
+        setDylibStatus(status);
+      }
+    } else {
+      appendLog(`Gagal menginjeksi dylib: ${res.error}`, 'roblox-error', 'terminal');
+      setToast({
+        show: true,
+        message: `Gagal menginjeksi: ${res.error}`,
+        type: 'error'
+      });
+    }
+  };
+
   const handleLaunchRoblox = async () => {
     if (!window.electronAPI) return;
     appendLog('Launching Roblox / Roblox Studio...', 'info-log', 'terminal');
@@ -754,6 +787,7 @@ export default function MainPage() {
             robloxProcess={robloxProcess}
             activeGame={activeGame}
             dylibStatus={dylibStatus}
+            onInject={handleAttach}
           />
 
           <div className="flex flex-1 w-full overflow-hidden relative">

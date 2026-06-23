@@ -86,6 +86,12 @@ function installRobloxHook() {
   }
 
   if (fs.existsSync(robloxAppPath)) {
+    // Temporarily make writeable to allow files overwrite
+    try {
+      const { execSync } = require('child_process');
+      execSync(`chmod -R +w "${robloxAppPath}" 2>/dev/null || true`);
+    } catch (e) {}
+
     const robloxAppClientSettings = path.join(robloxAppPath, 'Contents', 'MacOS', 'ClientSettings');
     safeWrite(
       path.join(robloxAppClientSettings, 'ClientAppSettings.json'),
@@ -130,6 +136,15 @@ function installRobloxHook() {
       console.log('[Hook ✓] Re-signed patched Roblox.app');
     } catch (e) {
       console.warn('[Hook ⚠] Could not re-sign Roblox.app (non-fatal)');
+    }
+
+    // Write-protect Roblox bundle to prevent auto-updater from replacing the x86_64 build
+    try {
+      const { execSync } = require('child_process');
+      execSync(`chmod -R 555 "${robloxAppPath}" 2>/dev/null || true`);
+      console.log('[Hook ✓] Roblox Player app bundle write-protected (read-only)');
+    } catch (e) {
+      console.warn('[Hook ⚠] Could not write-protect Roblox.app');
     }
   }
 
@@ -685,10 +700,12 @@ ipcMain.handle('launch-roblox', async () => {
 });
 
 ipcMain.handle('attach-executor', async () => {
-  return { 
-    success: false, 
-    error: 'Injeksi manual dari UI dinonaktifkan. Silakan jalankan `./setup-roblox.sh` di Terminal untuk melakukan instalasi dan injeksi.' 
-  };
+  try {
+    installRobloxHook();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 // IPC handlers for custom window controls

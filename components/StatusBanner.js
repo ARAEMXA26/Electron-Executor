@@ -45,9 +45,13 @@ export default function StatusBanner({ robloxProcess, activeGame, dylibStatus, o
               ✓ Injected (Opiumware)
             </span>
           ) : dylibStatus?.status === 'not_injected' ? (
-            <span className="text-amber-400 font-medium flex items-center gap-1">
-              ✗ Not Injected
-            </span>
+            <button
+              onClick={onInject}
+              className="text-amber-400 font-medium flex items-center gap-1 cursor-pointer hover:underline bg-transparent border-none p-0 outline-none"
+              title="Click to inject/attach executor"
+            >
+              ✗ Not Injected (Click to Attach)
+            </button>
           ) : dylibStatus?.status === 'not_installed' ? (
             <span className="text-rose-400">Roblox Not Installed</span>
           ) : (

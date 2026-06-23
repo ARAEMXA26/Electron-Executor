@@ -137,6 +137,8 @@ REMOVED=0
 
 # Remove from /Applications
 if [ -d "/Applications/Roblox.app" ]; then
+  chmod -R +w "/Applications/Roblox.app" 2>/dev/null || true
+  sudo chmod -R +w "/Applications/Roblox.app" 2>/dev/null || true
   if rm -rf "/Applications/Roblox.app" 2>/dev/null; then
     success "Removed /Applications/Roblox.app"
     REMOVED=$((REMOVED + 1))
@@ -404,6 +406,11 @@ if [ -n "$ROBLOX_PATH" ] && [ -d "$ROBLOX_PATH" ]; then
   codesign --force --deep --sign - "$ROBLOX_PATH" 2>/dev/null || true
   success "Ad-hoc code signature applied to patched Roblox"
   PATCH_COUNT=$((PATCH_COUNT + 1))
+
+  # 5e. Write-protect Roblox bundle to prevent auto-updater from replacing the x86_64 build
+  info "Write-protecting Roblox Player app bundle to block auto-updates..."
+  chmod -R 555 "$ROBLOX_PATH" 2>/dev/null || sudo chmod -R 555 "$ROBLOX_PATH" 2>/dev/null || true
+  success "Roblox Player app bundle write-protected"
 
 else
   warn "Roblox.app not found — skipping bundle patching"
