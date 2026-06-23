@@ -478,12 +478,8 @@ export default function MainPage() {
     appendLog(`Menjalankan script: ${tab.name}`, 'system-log', 'terminal');
     window.electronAPI.executeScript(tab.content, tab.name);
     
-    // Show premium toast notification
-    setToast({
-      show: true,
-      message: `Script "${tab.name}" sent to Roblox successfully!`,
-      type: 'success'
-    });
+    // Log directly to Console panel instead of popup toast
+    appendLog(`Script "${tab.name}" sent to Roblox successfully!`, 'success-log', 'console');
   };
 
   const handleTabAdd = async () => {
@@ -574,12 +570,8 @@ export default function MainPage() {
     appendLog(`Menjalankan script: ${activeTab.name}`, 'system-log', 'terminal');
     window.electronAPI.executeScript(activeTab.content, activeTab.name);
     
-    // Show premium toast notification
-    setToast({
-      show: true,
-      message: `Script "${activeTab.name}" sent to Roblox successfully!`,
-      type: 'success'
-    });
+    // Log directly to Console panel instead of popup toast
+    appendLog(`Script "${activeTab.name}" sent to Roblox successfully!`, 'success-log', 'console');
   };
 
   const handleOpenFile = async () => {
